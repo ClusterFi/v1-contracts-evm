@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.10;
+pragma solidity 0.8.20;
 
 import "./base/InterestRateModel.sol";
+import "./libraries/SafeMath.sol";
 
 /**
-  * @title Compound's JumpRateModel Contract
-  * @author Compound
+  * @title Cluster's JumpRateModel Contract
+  * @author Cluster
+  * @notice Jump rate model contract that automatically adjusts the interest rate based on the utilization rate.
+  * This is a modified version of the Compound JumpRateModel contract
+  * https://github.com/compound-finance/compound-protocol/blob/master/contracts/JumpRateModel.sol
   */
 contract JumpRateModel is InterestRateModel {
+    using SafeMath for uint;
 
-    event NewInterestParams(uint baseRatePerBlock, uint multiplierPerBlock, uint jumpMultiplierPerBlock, uint kink);
-
-    uint256 private constant BASE = 1e18;
+    event NewInterestParams(
+        uint baseRatePerBlock, 
+        uint multiplierPerBlock, 
+        uint jumpMultiplierPerBlock, 
+        uint kink
+    );
 
     /**
      * @notice The approximate number of blocks per year that is assumed by the interest rate model
@@ -40,18 +48,28 @@ contract JumpRateModel is InterestRateModel {
 
     /**
      * @notice Construct an interest rate model
-     * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by BASE)
-     * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by BASE)
+     * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by 1e18)
+     * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by 1e18)
      * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
      * @param kink_ The utilization point at which the jump multiplier is applied
      */
-    constructor(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_) {
-        baseRatePerBlock = baseRatePerYear / blocksPerYear;
-        multiplierPerBlock = multiplierPerYear / blocksPerYear;
-        jumpMultiplierPerBlock = jumpMultiplierPerYear / blocksPerYear;
+    constructor(
+        uint baseRatePerYear, 
+        uint multiplierPerYear, 
+        uint jumpMultiplierPerYear, 
+        uint kink_
+    ) {
+        baseRatePerBlock = baseRatePerYear.mul(1e18).div(blocksPerYear).div(1e18);
+        multiplierPerBlock = multiplierPerYear.mul(1e18).div(blocksPerYear).div(1e18);
+        jumpMultiplierPerBlock = jumpMultiplierPerYear.mul(1e18).div(blocksPerYear).div(1e18);
         kink = kink_;
 
-        emit NewInterestParams(baseRatePerBlock, multiplierPerBlock, jumpMultiplierPerBlock, kink);
+        emit NewInterestParams(
+            baseRatePerBlock, 
+            multiplierPerBlock, 
+            jumpMultiplierPerBlock, 
+            kink
+        );
     }
 
     /**
@@ -59,15 +77,19 @@ contract JumpRateModel is InterestRateModel {
      * @param cash The amount of cash in the market
      * @param borrows The amount of borrows in the market
      * @param reserves The amount of reserves in the market (currently unused)
-     * @return The utilization rate as a mantissa between [0, BASE]
+     * @return The utilization rate as a mantissa between [0, 1e18]
      */
-    function utilizationRate(uint cash, uint borrows, uint reserves) public pure returns (uint) {
+    function utilizationRate(
+        uint cash, 
+        uint borrows, 
+        uint reserves
+    ) public pure returns (uint) {
         // Utilization rate is 0 when there are no borrows
         if (borrows == 0) {
             return 0;
         }
 
-        return borrows * BASE / (cash + borrows - reserves);
+        return borrows.mul(1e18).div(cash.add(borrows).sub(reserves));
     }
 
     /**
@@ -75,17 +97,21 @@ contract JumpRateModel is InterestRateModel {
      * @param cash The amount of cash in the market
      * @param borrows The amount of borrows in the market
      * @param reserves The amount of reserves in the market
-     * @return The borrow rate percentage per block as a mantissa (scaled by BASE)
+     * @return The borrow rate percentage per block as a mantissa (scaled by 1e18)
      */
-    function getBorrowRate(uint cash, uint borrows, uint reserves) override public view returns (uint) {
+    function getBorrowRate(
+        uint cash, 
+        uint borrows, 
+        uint reserves
+    ) public view override returns (uint) {
         uint util = utilizationRate(cash, borrows, reserves);
 
         if (util <= kink) {
-            return (util * multiplierPerBlock / BASE) + baseRatePerBlock;
+            return util.mul(multiplierPerBlock).div(1e18).add(baseRatePerBlock);
         } else {
-            uint normalRate = (kink * multiplierPerBlock / BASE) + baseRatePerBlock;
-            uint excessUtil = util - kink;
-            return (excessUtil * jumpMultiplierPerBlock/ BASE) + normalRate;
+            uint normalRate = kink.mul(multiplierPerBlock).div(1e18).add(baseRatePerBlock);
+            uint excessUtil = util.sub(kink);
+            return excessUtil.mul(jumpMultiplierPerBlock).div(1e18).add(normalRate);
         }
     }
 
@@ -95,12 +121,17 @@ contract JumpRateModel is InterestRateModel {
      * @param borrows The amount of borrows in the market
      * @param reserves The amount of reserves in the market
      * @param reserveFactorMantissa The current reserve factor for the market
-     * @return The supply rate percentage per block as a mantissa (scaled by BASE)
+     * @return The supply rate percentage per block as a mantissa (scaled by 1e18)
      */
-    function getSupplyRate(uint cash, uint borrows, uint reserves, uint reserveFactorMantissa) override public view returns (uint) {
-        uint oneMinusReserveFactor = BASE - reserveFactorMantissa;
+    function getSupplyRate(
+        uint cash, 
+        uint borrows, 
+        uint reserves, 
+        uint reserveFactorMantissa
+    ) public view override returns (uint) {
+        uint oneMinusReserveFactor = uint(1e18).sub(reserveFactorMantissa);
         uint borrowRate = getBorrowRate(cash, borrows, reserves);
-        uint rateToPool = borrowRate * oneMinusReserveFactor / BASE;
-        return utilizationRate(cash, borrows, reserves) * rateToPool / BASE;
+        uint rateToPool = borrowRate.mul(oneMinusReserveFactor).div(1e18);
+        return utilizationRate(cash, borrows, reserves).mul(rateToPool).div(1e18);
     }
 }
