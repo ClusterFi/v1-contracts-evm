@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.10;
+pragma solidity 0.8.20;
 
 /**
  * @title Exponential module for storing fixed-precision decimals
- * @author Compound
+ * @author Cluster
  * @notice Exp is a struct which stores decimals with a fixed precision of 18 decimal places.
  *         Thus, if we wanted to store the 5.1, mantissa would store 5.1e18. That is:
  *         `Exp({mantissa: 5100000000000000000})`.
+ * This is a modified version of the Compound ExponentialNoError contract
+ * https://github.com/compound-finance/compound-protocol/blob/master/contracts/ExponentialNoError.sol
  */
 contract ExponentialNoError {
     uint constant expScale = 1e18;
     uint constant doubleScale = 1e36;
-    uint constant halfExpScale = expScale/2;
+    uint constant halfExpScale = expScale / 2;
     uint constant mantissaOne = expScale;
 
     struct Exp {
