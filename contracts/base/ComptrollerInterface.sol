@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.10;
+pragma solidity 0.8.20;
 
 abstract contract ComptrollerInterface {
     /// @notice Indicator that this is a Comptroller contract (for inspection)
@@ -7,26 +7,60 @@ abstract contract ComptrollerInterface {
 
     /*** Assets You Are In ***/
 
-    function enterMarkets(address[] calldata cTokens) virtual external returns (uint[] memory);
-    function exitMarket(address cToken) virtual external returns (uint);
+    function enterMarkets(
+        address[] calldata cTokens
+    ) external virtual returns (uint[] memory);
+
+    function exitMarket(
+        address cToken
+    ) external virtual returns (uint);
 
     /*** Policy Hooks ***/
 
-    function mintAllowed(address cToken, address minter, uint mintAmount) virtual external returns (uint);
-    function mintVerify(address cToken, address minter, uint mintAmount, uint mintTokens) virtual external;
+    function mintAllowed(
+        address cToken, 
+        address minter, 
+        uint mintAmount
+    ) external virtual returns (uint);
 
-    function redeemAllowed(address cToken, address redeemer, uint redeemTokens) virtual external returns (uint);
-    function redeemVerify(address cToken, address redeemer, uint redeemAmount, uint redeemTokens) virtual external;
+    function mintVerify(
+        address cToken, 
+        address minter, 
+        uint mintAmount, 
+        uint mintTokens
+    ) external virtual;
 
-    function borrowAllowed(address cToken, address borrower, uint borrowAmount) virtual external returns (uint);
-    function borrowVerify(address cToken, address borrower, uint borrowAmount) virtual external;
+    function redeemAllowed(
+        address cToken, 
+        address redeemer, 
+        uint redeemTokens
+    ) external virtual returns (uint);
+
+    function redeemVerify(
+        address cToken, 
+        address redeemer, 
+        uint redeemAmount, 
+        uint redeemTokens
+    ) external virtual;
+
+    function borrowAllowed(
+        address cToken, 
+        address borrower, 
+        uint borrowAmount
+    ) external virtual returns (uint);
+
+    function borrowVerify(
+        address cToken, 
+        address borrower, 
+        uint borrowAmount
+    ) external virtual;
 
     function repayBorrowAllowed(
         address cToken,
         address payer,
         address borrower,
         uint repayAmount
-    ) virtual external returns (uint);
+    ) external virtual returns (uint);
     
     function repayBorrowVerify(
         address cToken,
@@ -34,7 +68,7 @@ abstract contract ComptrollerInterface {
         address borrower,
         uint repayAmount,
         uint borrowerIndex
-    ) virtual external;
+    ) external virtual;
 
     function liquidateBorrowAllowed(
         address cTokenBorrowed,
@@ -42,7 +76,7 @@ abstract contract ComptrollerInterface {
         address liquidator,
         address borrower,
         uint repayAmount
-    ) virtual external returns (uint);
+    ) external virtual returns (uint);
 
     function liquidateBorrowVerify(
         address cTokenBorrowed,
@@ -51,7 +85,7 @@ abstract contract ComptrollerInterface {
         address borrower,
         uint repayAmount,
         uint seizeTokens
-    ) virtual external;
+    ) external virtual;
 
     function seizeAllowed(
         address cTokenCollateral,
@@ -59,7 +93,7 @@ abstract contract ComptrollerInterface {
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) virtual external returns (uint);
+    ) external virtual returns (uint);
 
     function seizeVerify(
         address cTokenCollateral,
@@ -67,10 +101,21 @@ abstract contract ComptrollerInterface {
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) virtual external;
+    ) external virtual;
 
-    function transferAllowed(address cToken, address src, address dst, uint transferTokens) virtual external returns (uint);
-    function transferVerify(address cToken, address src, address dst, uint transferTokens) virtual external;
+    function transferAllowed(
+        address cToken, 
+        address src, 
+        address dst, 
+        uint transferTokens
+    ) external virtual returns (uint);
+
+    function transferVerify(
+        address cToken, 
+        address src, 
+        address dst, 
+        uint transferTokens
+    ) external virtual;
 
     /*** Liquidity/Liquidation Calculations ***/
 
@@ -78,5 +123,5 @@ abstract contract ComptrollerInterface {
         address cTokenBorrowed,
         address cTokenCollateral,
         uint repayAmount
-    ) virtual external view returns (uint, uint);
+    ) external view virtual returns (uint, uint);
 }
