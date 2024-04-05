@@ -7,33 +7,33 @@ abstract contract ComptrollerInterface {
 
     /*** Assets You Are In ***/
 
-    function enterMarkets(address[] calldata cTokens) external virtual returns (uint[] memory);
+    function enterMarkets(address[] calldata clTokens) external virtual returns (uint[] memory);
 
-    function exitMarket(address cToken) external virtual returns (uint);
+    function exitMarket(address clToken) external virtual returns (uint);
 
     /*** Policy Hooks ***/
 
-    function mintAllowed(address cToken, address minter, uint mintAmount) external virtual returns (uint);
+    function mintAllowed(address clToken, address minter, uint mintAmount) external virtual returns (uint);
 
-    function mintVerify(address cToken, address minter, uint mintAmount, uint mintTokens) external virtual;
+    function mintVerify(address clToken, address minter, uint mintAmount, uint mintTokens) external virtual;
 
-    function redeemAllowed(address cToken, address redeemer, uint redeemTokens) external virtual returns (uint);
+    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) external virtual returns (uint);
 
-    function redeemVerify(address cToken, address redeemer, uint redeemAmount, uint redeemTokens) external virtual;
+    function redeemVerify(address clToken, address redeemer, uint redeemAmount, uint redeemTokens) external virtual;
 
-    function borrowAllowed(address cToken, address borrower, uint borrowAmount) external virtual returns (uint);
+    function borrowAllowed(address clToken, address borrower, uint borrowAmount) external virtual returns (uint);
 
-    function borrowVerify(address cToken, address borrower, uint borrowAmount) external virtual;
+    function borrowVerify(address clToken, address borrower, uint borrowAmount) external virtual;
 
     function repayBorrowAllowed(
-        address cToken,
+        address clToken,
         address payer,
         address borrower,
         uint repayAmount
     ) external virtual returns (uint);
 
     function repayBorrowVerify(
-        address cToken,
+        address clToken,
         address payer,
         address borrower,
         uint repayAmount,
@@ -41,16 +41,16 @@ abstract contract ComptrollerInterface {
     ) external virtual;
 
     function liquidateBorrowAllowed(
-        address cTokenBorrowed,
-        address cTokenCollateral,
+        address clTokenBorrowed,
+        address clTokenCollateral,
         address liquidator,
         address borrower,
         uint repayAmount
     ) external virtual returns (uint);
 
     function liquidateBorrowVerify(
-        address cTokenBorrowed,
-        address cTokenCollateral,
+        address clTokenBorrowed,
+        address clTokenCollateral,
         address liquidator,
         address borrower,
         uint repayAmount,
@@ -58,35 +58,35 @@ abstract contract ComptrollerInterface {
     ) external virtual;
 
     function seizeAllowed(
-        address cTokenCollateral,
-        address cTokenBorrowed,
+        address clTokenCollateral,
+        address clTokenBorrowed,
         address liquidator,
         address borrower,
         uint seizeTokens
     ) external virtual returns (uint);
 
     function seizeVerify(
-        address cTokenCollateral,
-        address cTokenBorrowed,
+        address clTokenCollateral,
+        address clTokenBorrowed,
         address liquidator,
         address borrower,
         uint seizeTokens
     ) external virtual;
 
     function transferAllowed(
-        address cToken,
+        address clToken,
         address src,
         address dst,
         uint transferTokens
     ) external virtual returns (uint);
 
-    function transferVerify(address cToken, address src, address dst, uint transferTokens) external virtual;
+    function transferVerify(address clToken, address src, address dst, uint transferTokens) external virtual;
 
     /*** Liquidity/Liquidation Calculations ***/
 
     function liquidateCalculateSeizeTokens(
-        address cTokenBorrowed,
-        address cTokenCollateral,
+        address clTokenBorrowed,
+        address clTokenCollateral,
         uint repayAmount
     ) external view virtual returns (uint, uint);
 }
