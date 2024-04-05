@@ -1,0 +1,18 @@
+{
+  "extends": "solhint:recommended",
+  "plugins": ["prettier"],
+  "rules": {
+    "prettier/prettier": "error",
+    "compiler-version": ["error", "^0.8.20"],
+    "max-line-length": ["error", 120],
+    "no-global-import": "off",
+    "no-console": "error",
+    "one-contract-per-file": "off",
+    "explicit-types": ["off","explicit"],
+    "const-name-snakecase": "off",
+    "max-states-count": ["off", 15],
+    "gas-custom-errors": "off",
+    "reason-string": ["off", { "maxLength":32 }],
+    "func-visibility": ["error", { "ignoreConstructors": true }]
+  }
+}
