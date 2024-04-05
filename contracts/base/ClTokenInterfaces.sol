@@ -94,10 +94,10 @@ contract ClTokenStorage {
     uint public totalSupply;
 
     // Official record of token balances for each account
-    mapping (address => uint) internal accountTokens;
+    mapping(address => uint) internal accountTokens;
 
     // Approved token transfer amounts on behalf of others
-    mapping (address => mapping (address => uint)) internal transferAllowances;
+    mapping(address => mapping(address => uint)) internal transferAllowances;
 
     /**
      * @notice Container for borrow balance information
@@ -154,8 +154,13 @@ abstract contract ClTokenInterface is ClTokenStorage {
     /**
      * @notice Event emitted when a borrow is liquidated
      */
-    event LiquidateBorrow(address liquidator, address borrower, uint repayAmount, address clTokenCollateral, uint seizeTokens);
-
+    event LiquidateBorrow(
+        address liquidator,
+        address borrower,
+        uint repayAmount,
+        address clTokenCollateral,
+        uint seizeTokens
+    );
 
     /*** Admin Events ***/
 
@@ -204,7 +209,6 @@ abstract contract ClTokenInterface is ClTokenStorage {
      */
     event Approval(address indexed owner, address indexed spender, uint amount);
 
-
     /*** User Interface ***/
 
     function transfer(address dst, uint amount) external virtual returns (bool);
@@ -225,7 +229,6 @@ abstract contract ClTokenInterface is ClTokenStorage {
     function accrueInterest() external virtual returns (uint);
     function seize(address liquidator, address borrower, uint seizeTokens) external virtual returns (uint);
 
-
     /*** Admin Functions ***/
 
     function _setPendingAdmin(address payable newPendingAdmin) external virtual returns (uint);
@@ -244,7 +247,6 @@ contract ClErc20Storage {
 }
 
 abstract contract ClErc20Interface is ClErc20Storage {
-
     /*** User Interface ***/
 
     function mint(uint mintAmount) external virtual returns (uint);
@@ -253,9 +255,12 @@ abstract contract ClErc20Interface is ClErc20Storage {
     function borrow(uint borrowAmount) external virtual returns (uint);
     function repayBorrow(uint repayAmount) external virtual returns (uint);
     function repayBorrowBehalf(address borrower, uint repayAmount) external virtual returns (uint);
-    function liquidateBorrow(address borrower, uint repayAmount, ClTokenInterface clTokenCollateral) external virtual returns (uint);
+    function liquidateBorrow(
+        address borrower,
+        uint repayAmount,
+        ClTokenInterface clTokenCollateral
+    ) external virtual returns (uint);
     function sweepToken(EIP20NonStandardInterface token) external virtual;
-
 
     /*** Admin Functions ***/
 
@@ -281,7 +286,11 @@ abstract contract ClDelegatorInterface is ClDelegationStorage {
      * @param allowResign Flag to indicate whether to call _resignImplementation on the old implementation
      * @param becomeImplementationData The encoded bytes data to be passed to _becomeImplementation
      */
-    function _setImplementation(address implementation_, bool allowResign, bytes memory becomeImplementationData) external virtual;
+    function _setImplementation(
+        address implementation_,
+        bool allowResign,
+        bytes memory becomeImplementationData
+    ) external virtual;
 }
 
 abstract contract ClDelegateInterface is ClDelegationStorage {

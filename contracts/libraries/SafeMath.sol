@@ -25,7 +25,9 @@ library SafeMath {
      */
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
         uint256 c;
-        unchecked { c = a + b; }
+        unchecked {
+            c = a + b;
+        }
         require(c >= a, "SafeMath: addition overflow");
 
         return c;
@@ -41,7 +43,9 @@ library SafeMath {
      */
     function add(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
         uint256 c;
-        unchecked { c = a + b; }
+        unchecked {
+            c = a + b;
+        }
         require(c >= a, errorMessage);
 
         return c;
@@ -60,7 +64,8 @@ library SafeMath {
     }
 
     /**
-     * @dev Returns the subtraction of two unsigned integers, reverting with custom message on underflow (when the result is negative).
+     * @dev Returns the subtraction of two unsigned integers, reverting with custom message on underflow
+     * (when the result is negative).
      *
      * Counterpart to Solidity's `-` operator.
      *
@@ -91,7 +96,9 @@ library SafeMath {
         }
 
         uint256 c;
-        unchecked { c = a * b; }
+        unchecked {
+            c = a * b;
+        }
         require(c / a == b, "SafeMath: multiplication overflow");
 
         return c;
@@ -114,7 +121,9 @@ library SafeMath {
         }
 
         uint256 c;
-        unchecked { c = a * b; }
+        unchecked {
+            c = a * b;
+        }
         require(c / a == b, errorMessage);
 
         return c;
