@@ -354,11 +354,13 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
          *  borrowIndexNew = simpleInterestFactor * borrowIndex + borrowIndex
          */
 
-        Exp memory simpleInterestFactor = mul_(Exp({mantissa: borrowRateMantissa}), blockDelta);
+        Exp memory simpleInterestFactor = mul_(Exp({ mantissa: borrowRateMantissa }), blockDelta);
         uint interestAccumulated = mul_ScalarTruncate(simpleInterestFactor, borrowsPrior);
         uint totalBorrowsNew = interestAccumulated + borrowsPrior;
         uint totalReservesNew = mul_ScalarTruncateAddUInt(
-            Exp({mantissa: reserveFactorMantissa}), interestAccumulated, reservesPrior
+            Exp({ mantissa: reserveFactorMantissa }),
+            interestAccumulated,
+            reservesPrior
         );
         uint borrowIndexNew = mul_ScalarTruncateAddUInt(simpleInterestFactor, borrowIndexPrior, borrowIndexPrior);
 
@@ -407,7 +409,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
             revert MintFreshnessCheck();
         }
 
-        Exp memory exchangeRate = Exp({mantissa: exchangeRateStoredInternal()});
+        Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
 
         /////////////////////////
         // EFFECTS & INTERACTIONS
@@ -474,16 +476,16 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @notice User redeems clTokens in exchange for the underlying asset
      * @dev Assumes interest has already been accrued up to the current block
      * @param redeemer The address of the account which is redeeming the tokens
-     * @param redeemTokensIn The number of clTokens to redeem into underlying 
+     * @param redeemTokensIn The number of clTokens to redeem into underlying
      * (only one of redeemTokensIn or redeemAmountIn may be non-zero)
-     * @param redeemAmountIn The number of underlying tokens to receive from redeeming clTokens 
+     * @param redeemAmountIn The number of underlying tokens to receive from redeeming clTokens
      * (only one of redeemTokensIn or redeemAmountIn may be non-zero)
      */
     function redeemFresh(address payable redeemer, uint redeemTokensIn, uint redeemAmountIn) internal {
         require(redeemTokensIn == 0 || redeemAmountIn == 0, "one of redeemTokensIn or redeemAmountIn must be zero");
 
         /* exchangeRate = invoke Exchange Rate Stored() */
-        Exp memory exchangeRate = Exp({mantissa: exchangeRateStoredInternal() });
+        Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
 
         uint redeemTokens;
         uint redeemAmount;
@@ -526,7 +528,6 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         // EFFECTS & INTERACTIONS
         // (No safe failures beyond this point)
 
-
         /*
          * We write the previously calculated values into storage.
          *  Note: Avoid token reentrancy attacks by writing reduced supply before external transfer.
@@ -551,9 +552,9 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     }
 
     /**
-      * @notice Sender borrows assets from the protocol to their own address
-      * @param borrowAmount The amount of the underlying asset to borrow
-      */
+     * @notice Sender borrows assets from the protocol to their own address
+     * @param borrowAmount The amount of the underlying asset to borrow
+     */
     function borrowInternal(uint borrowAmount) internal nonReentrant {
         accrueInterest();
         // borrowFresh emits borrow-specific logs on errors, so we don't need to
@@ -561,9 +562,9 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     }
 
     /**
-      * @notice Users borrow assets from the protocol to their own address
-      * @param borrowAmount The amount of the underlying asset to borrow
-      */
+     * @notice Users borrow assets from the protocol to their own address
+     * @param borrowAmount The amount of the underlying asset to borrow
+     */
     function borrowFresh(address payable borrower, uint borrowAmount) internal {
         /* Fail if borrow not allowed */
         uint allowed = comptroller.borrowAllowed(address(this), borrower, borrowAmount);
@@ -700,8 +701,8 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param repayAmount The amount of the underlying borrowed asset to repay
      */
     function liquidateBorrowInternal(
-        address borrower, 
-        uint repayAmount, 
+        address borrower,
+        uint repayAmount,
         ClTokenInterface clTokenCollateral
     ) internal nonReentrant {
         accrueInterest();
@@ -726,14 +727,18 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param repayAmount The amount of the underlying borrowed asset to repay
      */
     function liquidateBorrowFresh(
-        address liquidator, 
-        address borrower, 
-        uint repayAmount, 
+        address liquidator,
+        address borrower,
+        uint repayAmount,
         ClTokenInterface clTokenCollateral
     ) internal {
         /* Fail if liquidate not allowed */
         uint allowed = comptroller.liquidateBorrowAllowed(
-            address(this), address(clTokenCollateral), liquidator, borrower, repayAmount
+            address(this),
+            address(clTokenCollateral),
+            liquidator,
+            borrower,
+            repayAmount
         );
         if (allowed != 0) {
             revert LiquidateComptrollerRejection(allowed);
@@ -772,10 +777,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         // (No safe failures beyond this point)
 
         /* We calculate the number of collateral tokens that will be seized */
-        (
-            uint amountSeizeError, 
-            uint seizeTokens
-        ) = comptroller.liquidateCalculateSeizeTokens(address(this), address(clTokenCollateral), actualRepayAmount);
+        (uint amountSeizeError, uint seizeTokens) = comptroller.liquidateCalculateSeizeTokens(
+            address(this),
+            address(clTokenCollateral),
+            actualRepayAmount
+        );
         require(amountSeizeError == NO_ERROR, "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED");
 
         /* Revert if borrower collateral token balance < seizeTokens */
@@ -802,8 +808,8 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function seize(
-        address liquidator, 
-        address borrower, 
+        address liquidator,
+        address borrower,
         uint seizeTokens
     ) external override nonReentrant returns (uint) {
         seizeInternal(msg.sender, liquidator, borrower, seizeTokens);
@@ -837,12 +843,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
          *  borrowerTokensNew = accountTokens[borrower] - seizeTokens
          *  liquidatorTokensNew = accountTokens[liquidator] + seizeTokens
          */
-        uint protocolSeizeTokens = mul_(seizeTokens, Exp({mantissa: protocolSeizeShareMantissa}));
+        uint protocolSeizeTokens = mul_(seizeTokens, Exp({ mantissa: protocolSeizeShareMantissa }));
         uint liquidatorSeizeTokens = seizeTokens - protocolSeizeTokens;
-        Exp memory exchangeRate = Exp({mantissa: exchangeRateStoredInternal()});
+        Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
         uint protocolSeizeAmount = mul_ScalarTruncate(exchangeRate, protocolSeizeTokens);
         uint totalReservesNew = totalReserves + protocolSeizeAmount;
-
 
         /////////////////////////
         // EFFECTS & INTERACTIONS
@@ -860,16 +865,15 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         emit ReservesAdded(address(this), protocolSeizeAmount, totalReservesNew);
     }
 
-
     /*** Admin Functions ***/
 
     /**
-      * @notice Begins transfer of admin rights. The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
-      * @dev Admin function to begin change of admin. The newPendingAdmin must call `_acceptAdmin`
-      * to finalize the transfer.
-      * @param newPendingAdmin New pending admin.
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
+     * @notice Begins transfer of admin rights. The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
+     * @dev Admin function to begin change of admin. The newPendingAdmin must call `_acceptAdmin`
+     * to finalize the transfer.
+     * @param newPendingAdmin New pending admin.
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
     function _setPendingAdmin(address payable newPendingAdmin) external override returns (uint) {
         // Check caller = admin
         if (msg.sender != admin) {
@@ -889,10 +893,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     }
 
     /**
-      * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
-      * @dev Admin function for pending admin to accept role and update admin
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
+     * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
+     * @dev Admin function for pending admin to accept role and update admin
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
     function _acceptAdmin() external override returns (uint) {
         // Check caller is pendingAdmin and pendingAdmin ≠ address(0)
         if (msg.sender != pendingAdmin || msg.sender == address(0)) {
@@ -916,11 +920,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     }
 
     /**
-      * @notice Sets a new comptroller for the market
-      * @dev Admin function to set a new comptroller
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
-    function _setComptroller(ComptrollerInterface newComptroller) override public returns (uint) {
+     * @notice Sets a new comptroller for the market
+     * @dev Admin function to set a new comptroller
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
+    function _setComptroller(ComptrollerInterface newComptroller) public override returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
             revert SetComptrollerOwnerCheck();
@@ -940,10 +944,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     }
 
     /**
-      * @notice accrues interest and sets a new reserve factor for the protocol using _setReserveFactorFresh
-      * @dev Admin function to accrue interest and set a new reserve factor
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
+     * @notice accrues interest and sets a new reserve factor for the protocol using _setReserveFactorFresh
+     * @dev Admin function to accrue interest and set a new reserve factor
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
     function _setReserveFactor(uint newReserveFactorMantissa) external override nonReentrant returns (uint) {
         accrueInterest();
         // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
@@ -951,10 +955,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     }
 
     /**
-      * @notice Sets a new reserve factor for the protocol (*requires fresh interest accrual)
-      * @dev Admin function to set a new reserve factor
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
+     * @notice Sets a new reserve factor for the protocol (*requires fresh interest accrual)
+     * @dev Admin function to set a new reserve factor
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
     function _setReserveFactorFresh(uint newReserveFactorMantissa) internal returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
@@ -1035,7 +1039,6 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         return (NO_ERROR, actualAddAmount);
     }
 
-
     /**
      * @notice Accrues interest and reduces reserves by transferring to admin
      * @param reduceAmount Amount of reduction to reserves
@@ -1100,7 +1103,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param newInterestRateModel the new interest rate model to use
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setInterestRateModel(InterestRateModel newInterestRateModel) override public returns (uint) {
+    function _setInterestRateModel(InterestRateModel newInterestRateModel) public override returns (uint) {
         accrueInterest();
         // _setInterestRateModelFresh emits interest-rate-model-update-specific logs on errors, so we don't need to.
         return _setInterestRateModelFresh(newInterestRateModel);
@@ -1113,7 +1116,6 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function _setInterestRateModelFresh(InterestRateModel newInterestRateModel) internal returns (uint) {
-
         // Used to store old model for use in the event that is emitted on success
         InterestRateModel oldInterestRateModel;
 
@@ -1149,23 +1151,22 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @dev This excludes the value of the current message, if any
      * @return The quantity of underlying owned by this contract
      */
-    function getCashPrior() virtual internal view returns (uint);
+    function getCashPrior() internal view virtual returns (uint);
 
     /**
-     * @dev Performs a transfer in, reverting upon failure. 
+     * @dev Performs a transfer in, reverting upon failure.
      * Returns the amount actually transferred to the protocol, in case of a fee.
      * This may revert due to insufficient balance or insufficient allowance.
      */
-    function doTransferIn(address from, uint amount) virtual internal returns (uint);
+    function doTransferIn(address from, uint amount) internal virtual returns (uint);
 
     /**
      * @dev Performs a transfer out, ideally returning an explanatory error code upon failure rather than reverting.
      * If caller has not called checked protocol's balance, may revert due to insufficient cash held in the contract.
-     * If caller has checked protocol's balance, and verified it is >= amount, 
+     * If caller has checked protocol's balance, and verified it is >= amount,
      * this should not revert in normal conditions.
      */
-    function doTransferOut(address payable to, uint amount) virtual internal;
-
+    function doTransferOut(address payable to, uint amount) internal virtual;
 
     /*** Reentrancy Guard ***/
 
