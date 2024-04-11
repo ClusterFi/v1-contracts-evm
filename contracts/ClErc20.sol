@@ -29,14 +29,7 @@ contract ClErc20 is ClToken, ClErc20Interface {
         uint8 decimals_
     ) public {
         // ClToken initialize does the bulk of the work
-        super.initialize(
-            comptroller_, 
-            interestRateModel_, 
-            initialExchangeRateMantissa_, 
-            name_, 
-            symbol_, 
-            decimals_
-        );
+        super.initialize(comptroller_, interestRateModel_, initialExchangeRateMantissa_, name_, symbol_, decimals_);
 
         // Set underlying and sanity check it
         underlying = underlying_;
@@ -79,10 +72,10 @@ contract ClErc20 is ClToken, ClErc20Interface {
     }
 
     /**
-      * @notice Sender borrows assets from the protocol to their own address
-      * @param borrowAmount The amount of the underlying asset to borrow
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
+     * @notice Sender borrows assets from the protocol to their own address
+     * @param borrowAmount The amount of the underlying asset to borrow
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
     function borrow(uint borrowAmount) external override returns (uint) {
         borrowInternal(borrowAmount);
         return NO_ERROR;
@@ -118,8 +111,8 @@ contract ClErc20 is ClToken, ClErc20Interface {
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function liquidateBorrow(
-        address borrower, 
-        uint repayAmount, 
+        address borrower,
+        uint repayAmount,
         ClTokenInterface clTokenCollateral
     ) external override returns (uint) {
         liquidateBorrowInternal(borrower, repayAmount, clTokenCollateral);
@@ -127,7 +120,7 @@ contract ClErc20 is ClToken, ClErc20Interface {
     }
 
     /**
-     * @notice A public function to sweep accidental ERC-20 transfers to this contract. 
+     * @notice A public function to sweep accidental ERC-20 transfers to this contract.
      * Tokens are sent to admin (timelock)
      * @param token The address of the ERC-20 token to sweep
      */
@@ -154,7 +147,7 @@ contract ClErc20 is ClToken, ClErc20Interface {
      * @dev This excludes the value of the current message, if any
      * @return The quantity of underlying tokens owned by this contract
      */
-    function getCashPrior() virtual override internal view returns (uint) {
+    function getCashPrior() internal view virtual override returns (uint) {
         EIP20Interface token = EIP20Interface(underlying);
         return token.balanceOf(address(this));
     }
@@ -168,7 +161,7 @@ contract ClErc20 is ClToken, ClErc20Interface {
      * Note: This wrapper safely handles non-standard ERC-20 tokens that do not return a value.
      * See here: https://medium.com/coinmonks/missing-return-value-bug-at-least-130-tokens-affected-d67bf08521ca
      */
-    function doTransferIn(address from, uint amount) virtual override internal returns (uint) {
+    function doTransferIn(address from, uint amount) internal virtual override returns (uint) {
         // Read from storage once
         address underlying_ = underlying;
         EIP20NonStandardInterface token = EIP20NonStandardInterface(underlying_);
@@ -178,22 +171,25 @@ contract ClErc20 is ClToken, ClErc20Interface {
         bool success;
         assembly {
             switch returndatasize()
-                case 0 {                       // This is a non-standard ERC-20
-                    success := not(0)          // set success to true
-                }
-                case 32 {                      // This is a compliant ERC-20
-                    returndatacopy(0, 0, 32)
-                    success := mload(0)        // Set `success = returndata` of external override call
-                }
-                default {                      // This is an excessively non-compliant ERC-20, revert.
-                    revert(0, 0)
-                }
+            case 0 {
+                // This is a non-standard ERC-20
+                success := not(0) // set success to true
+            }
+            case 32 {
+                // This is a compliant ERC-20
+                returndatacopy(0, 0, 32)
+                success := mload(0) // Set `success = returndata` of external override call
+            }
+            default {
+                // This is an excessively non-compliant ERC-20, revert.
+                revert(0, 0)
+            }
         }
         require(success, "TOKEN_TRANSFER_IN_FAILED");
 
         // Calculate the amount that was *actually* transferred
         uint balanceAfter = EIP20Interface(underlying_).balanceOf(address(this));
-        return balanceAfter - balanceBefore;   // underflow already checked above, just subtract
+        return balanceAfter - balanceBefore; // underflow already checked above, just subtract
     }
 
     /**
@@ -205,23 +201,26 @@ contract ClErc20 is ClToken, ClErc20Interface {
      * Note: This wrapper safely handles non-standard ERC-20 tokens that do not return a value.
      * See here: https://medium.com/coinmonks/missing-return-value-bug-at-least-130-tokens-affected-d67bf08521ca
      */
-    function doTransferOut(address payable to, uint amount) virtual override internal {
+    function doTransferOut(address payable to, uint amount) internal virtual override {
         EIP20NonStandardInterface token = EIP20NonStandardInterface(underlying);
         token.transfer(to, amount);
 
         bool success;
         assembly {
             switch returndatasize()
-                case 0 {                      // This is a non-standard ERC-20
-                    success := not(0)          // set success to true
-                }
-                case 32 {                     // This is a compliant ERC-20
-                    returndatacopy(0, 0, 32)
-                    success := mload(0)        // Set `success = returndata` of external override call
-                }
-                default {                     // This is an excessively non-compliant ERC-20, revert.
-                    revert(0, 0)
-                }
+            case 0 {
+                // This is a non-standard ERC-20
+                success := not(0) // set success to true
+            }
+            case 32 {
+                // This is a compliant ERC-20
+                returndatacopy(0, 0, 32)
+                success := mload(0) // Set `success = returndata` of external override call
+            }
+            default {
+                // This is an excessively non-compliant ERC-20, revert.
+                revert(0, 0)
+            }
         }
         require(success, "TOKEN_TRANSFER_OUT_FAILED");
     }
