@@ -6,28 +6,27 @@ import "./base/PriceOracle.sol";
 
 contract UnitrollerAdminStorage {
     /**
-    * @notice Administrator for this contract
-    */
+     * @notice Administrator for this contract
+     */
     address public admin;
 
     /**
-    * @notice Pending administrator for this contract
-    */
+     * @notice Pending administrator for this contract
+     */
     address public pendingAdmin;
 
     /**
-    * @notice Active brains of Unitroller
-    */
+     * @notice Active brains of Unitroller
+     */
     address public comptrollerImplementation;
 
     /**
-    * @notice Pending brains of Unitroller
-    */
+     * @notice Pending brains of Unitroller
+     */
     address public pendingComptrollerImplementation;
 }
 
 contract ComptrollerV1Storage is UnitrollerAdminStorage {
-
     /**
      * @notice Oracle which gives the price of any given asset
      */
@@ -52,22 +51,18 @@ contract ComptrollerV1Storage is UnitrollerAdminStorage {
      * @notice Per-account mapping of "assets you are in", capped by maxAssets
      */
     mapping(address => ClToken[]) public accountAssets;
-
 }
 
 contract ComptrollerV2Storage is ComptrollerV1Storage {
     struct Market {
         // Whether or not this market is listed
         bool isListed;
-
         //  Multiplier representing the most one can borrow against their collateral in this market.
         //  For instance, 0.9 to allow borrowing 90% of collateral value.
         //  Must be between 0 and 1, and stored as a mantissa.
         uint collateralFactorMantissa;
-
         // Per-market mapping of "accounts in this asset"
         mapping(address => bool) accountMembership;
-
         // Whether or not this market receives CLR
         bool isClred;
     }
@@ -77,7 +72,6 @@ contract ComptrollerV2Storage is ComptrollerV1Storage {
      * @dev Used e.g. to determine if a market is supported
      */
     mapping(address => Market) public markets;
-
 
     /**
      * @notice The Pause Guardian can pause certain actions as a safety mechanism.
@@ -97,7 +91,6 @@ contract ComptrollerV3Storage is ComptrollerV2Storage {
     struct ClrMarketState {
         // The market's last updated clrBorrowIndex or clrSupplyIndex
         uint224 index;
-
         // The block number the index was last updated at
         uint32 block;
     }

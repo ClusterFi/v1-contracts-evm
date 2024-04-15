@@ -295,7 +295,7 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
     }
 
     /**
-     * @notice Accrue interest to updated borrowIndex and then calculate account's borrow balance 
+     * @notice Accrue interest to updated borrowIndex and then calculate account's borrow balance
      * using the updated borrowIndex
      * @param account The address whose balance should be calculated after updating borrowIndex
      * @return The calculated balance
@@ -372,7 +372,7 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
     }
 
     /**
-     * @notice A public function to sweep accidental ERC-20 transfers to this contract. 
+     * @notice A public function to sweep accidental ERC-20 transfers to this contract.
      * Tokens are sent to admin (timelock)
      * @param token The address of the ERC-20 token to sweep
      */
