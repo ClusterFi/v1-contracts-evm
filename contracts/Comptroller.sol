@@ -118,7 +118,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param clTokens The list of addresses of the clToken markets to be enabled
      * @return Success indicator for whether each corresponding market was entered
      */
-    function enterMarkets(address[] memory clTokens) override public returns (uint[] memory) {
+    function enterMarkets(address[] memory clTokens) public override returns (uint[] memory) {
         uint len = clTokens.length;
 
         uint[] memory results = new uint[](len);
@@ -170,7 +170,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param clTokenAddress The address of the asset to be removed
      * @return Whether or not the account successfully exited the market
      */
-    function exitMarket(address clTokenAddress) override external returns (uint) {
+    function exitMarket(address clTokenAddress) external override returns (uint) {
         ClToken clToken = ClToken(clTokenAddress);
         /* Get sender tokensHeld and amountOwed underlying from the clToken */
         (uint oErr, uint tokensHeld, uint amountOwed, ) = clToken.getAccountSnapshot(msg.sender);
@@ -231,7 +231,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param mintAmount The amount of underlying being supplied to the market in exchange for tokens
      * @return 0 if the mint is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function mintAllowed(address clToken, address minter, uint mintAmount) override external returns (uint) {
+    function mintAllowed(address clToken, address minter, uint mintAmount) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
         require(!mintGuardianPaused[clToken], "mint is paused");
 
@@ -257,7 +257,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param actualMintAmount The amount of the underlying asset being minted
      * @param mintTokens The number of tokens being minted
      */
-    function mintVerify(address clToken, address minter, uint actualMintAmount, uint mintTokens) override external {
+    function mintVerify(address clToken, address minter, uint actualMintAmount, uint mintTokens) external override {
         // Shh - currently unused
         clToken;
         minter;
@@ -277,7 +277,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param redeemTokens The number of clTokens to exchange for the underlying asset in the market
      * @return 0 if the redeem is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) override external returns (uint) {
+    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) external override returns (uint) {
         uint allowed = redeemAllowedInternal(clToken, redeemer, redeemTokens);
         if (allowed != uint(Error.NO_ERROR)) {
             return allowed;
@@ -301,7 +301,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         }
 
         /* Otherwise, perform a hypothetical liquidity check to guard against shortfall */
-        (Error err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(redeemer, ClToken(clToken), redeemTokens, 0);
+        (Error err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(
+            redeemer,
+            ClToken(clToken),
+            redeemTokens,
+            0
+        );
         if (err != Error.NO_ERROR) {
             return uint(err);
         }
@@ -319,7 +324,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param redeemAmount The amount of the underlying asset being redeemed
      * @param redeemTokens The number of tokens being redeemed
      */
-    function redeemVerify(address clToken, address redeemer, uint redeemAmount, uint redeemTokens) override external {
+    function redeemVerify(address clToken, address redeemer, uint redeemAmount, uint redeemTokens) external override {
         // Shh - currently unused
         clToken;
         redeemer;
@@ -337,7 +342,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param borrowAmount The amount of underlying the account would borrow
      * @return 0 if the borrow is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function borrowAllowed(address clToken, address borrower, uint borrowAmount) override external returns (uint) {
+    function borrowAllowed(address clToken, address borrower, uint borrowAmount) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
         require(!borrowGuardianPaused[clToken], "borrow is paused");
 
@@ -363,7 +368,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             return uint(Error.PRICE_ERROR);
         }
 
-
         uint borrowCap = borrowCaps[clToken];
         // Borrow cap of 0 corresponds to unlimited borrowing
         if (borrowCap != 0) {
@@ -372,11 +376,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             require(nextTotalBorrows < borrowCap, "market borrow cap reached");
         }
 
-        (
-            Error _err,
-            , 
-            uint shortfall
-        ) = getHypotheticalAccountLiquidityInternal(borrower, ClToken(clToken), 0, borrowAmount);
+        (Error _err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(
+            borrower,
+            ClToken(clToken),
+            0,
+            borrowAmount
+        );
 
         if (_err != Error.NO_ERROR) {
             return uint(_err);
@@ -386,7 +391,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         }
 
         // Keep the flywheel moving
-        Exp memory borrowIndex = Exp({mantissa: ClToken(clToken).borrowIndex()});
+        Exp memory borrowIndex = Exp({ mantissa: ClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
 
@@ -399,7 +404,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param borrower The address borrowing the underlying
      * @param borrowAmount The amount of the underlying asset requested to borrow
      */
-    function borrowVerify(address clToken, address borrower, uint borrowAmount) override external {
+    function borrowVerify(address clToken, address borrower, uint borrowAmount) external override {
         // Shh - currently unused
         clToken;
         borrower;
@@ -423,7 +428,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address clToken,
         address payer,
         address borrower,
-        uint repayAmount) override external returns (uint) {
+        uint repayAmount
+    ) external override returns (uint) {
         // Shh - currently unused
         payer;
         borrower;
@@ -434,7 +440,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         }
 
         // Keep the flywheel moving
-        Exp memory borrowIndex = Exp({mantissa: ClToken(clToken).borrowIndex()});
+        Exp memory borrowIndex = Exp({ mantissa: ClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
 
@@ -453,7 +459,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address payer,
         address borrower,
         uint actualRepayAmount,
-        uint borrowerIndex) override external {
+        uint borrowerIndex
+    ) external override {
         // Shh - currently unused
         clToken;
         payer;
@@ -480,7 +487,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address clTokenCollateral,
         address liquidator,
         address borrower,
-        uint repayAmount) override external returns (uint) {
+        uint repayAmount
+    ) external override returns (uint) {
         // Shh - currently unused
         liquidator;
 
@@ -505,7 +513,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             }
 
             /* The liquidator may not repay more than what is allowed by the closeFactor */
-            uint maxClose = mul_ScalarTruncate(Exp({mantissa: closeFactorMantissa}), borrowBalance);
+            uint maxClose = mul_ScalarTruncate(Exp({ mantissa: closeFactorMantissa }), borrowBalance);
             if (repayAmount > maxClose) {
                 return uint(Error.TOO_MUCH_REPAY);
             }
@@ -527,7 +535,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address liquidator,
         address borrower,
         uint actualRepayAmount,
-        uint seizeTokens) override external {
+        uint seizeTokens
+    ) external override {
         // Shh - currently unused
         clTokenBorrowed;
         clTokenCollateral;
@@ -555,7 +564,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address clTokenBorrowed,
         address liquidator,
         address borrower,
-        uint seizeTokens) override external returns (uint) {
+        uint seizeTokens
+    ) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
         require(!seizeGuardianPaused, "seize is paused");
 
@@ -591,7 +601,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address clTokenBorrowed,
         address liquidator,
         address borrower,
-        uint seizeTokens) override external {
+        uint seizeTokens
+    ) external override {
         // Shh - currently unused
         clTokenCollateral;
         clTokenBorrowed;
@@ -613,7 +624,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param transferTokens The number of clTokens to transfer
      * @return 0 if the transfer is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
-    function transferAllowed(address clToken, address src, address dst, uint transferTokens) override external returns (uint) {
+    function transferAllowed(
+        address clToken,
+        address src,
+        address dst,
+        uint transferTokens
+    ) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
         require(!transferGuardianPaused, "transfer is paused");
 
@@ -639,7 +655,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param dst The account which receives the tokens
      * @param transferTokens The number of clTokens to transfer
      */
-    function transferVerify(address clToken, address src, address dst, uint transferTokens) override external {
+    function transferVerify(address clToken, address src, address dst, uint transferTokens) external override {
         // Shh - currently unused
         clToken;
         src;
@@ -679,7 +695,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      *          account shortfall below collateral requirements)
      */
     function getAccountLiquidity(address account) public view returns (uint, uint, uint) {
-        (Error err, uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(account, ClToken(address(0)), 0, 0);
+        (Error err, uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(
+            account,
+            ClToken(address(0)),
+            0,
+            0
+        );
 
         return (uint(err), liquidity, shortfall);
     }
@@ -708,8 +729,14 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address account,
         address clTokenModify,
         uint redeemTokens,
-        uint borrowAmount) public view returns (uint, uint, uint) {
-        (Error err, uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(account, ClToken(clTokenModify), redeemTokens, borrowAmount);
+        uint borrowAmount
+    ) public view returns (uint, uint, uint) {
+        (Error err, uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(
+            account,
+            ClToken(clTokenModify),
+            redeemTokens,
+            borrowAmount
+        );
         return (uint(err), liquidity, shortfall);
     }
 
@@ -729,8 +756,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         address account,
         ClToken clTokenModify,
         uint redeemTokens,
-        uint borrowAmount) internal view returns (Error, uint, uint) {
-
+        uint borrowAmount
+    ) internal view returns (Error, uint, uint) {
         AccountLiquidityLocalVars memory vars; // Holds all our calculation results
         uint oErr;
 
@@ -740,19 +767,22 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             ClToken asset = assets[i];
 
             // Read the balances and exchange rate from the clToken
-            (oErr, vars.clTokenBalance, vars.borrowBalance, vars.exchangeRateMantissa) = asset.getAccountSnapshot(account);
-            if (oErr != 0) { // semi-opaque error code, we assume NO_ERROR == 0 is invariant between upgrades
+            (oErr, vars.clTokenBalance, vars.borrowBalance, vars.exchangeRateMantissa) = asset.getAccountSnapshot(
+                account
+            );
+            if (oErr != 0) {
+                // semi-opaque error code, we assume NO_ERROR == 0 is invariant between upgrades
                 return (Error.SNAPSHOT_ERROR, 0, 0);
             }
-            vars.collateralFactor = Exp({mantissa: markets[address(asset)].collateralFactorMantissa});
-            vars.exchangeRate = Exp({mantissa: vars.exchangeRateMantissa});
+            vars.collateralFactor = Exp({ mantissa: markets[address(asset)].collateralFactorMantissa });
+            vars.exchangeRate = Exp({ mantissa: vars.exchangeRateMantissa });
 
             // Get the normalized price of the asset
             vars.oraclePriceMantissa = oracle.getUnderlyingPrice(asset);
             if (vars.oraclePriceMantissa == 0) {
                 return (Error.PRICE_ERROR, 0, 0);
             }
-            vars.oraclePrice = Exp({mantissa: vars.oraclePriceMantissa});
+            vars.oraclePrice = Exp({ mantissa: vars.oraclePriceMantissa });
 
             // Pre-compute a conversion factor from tokens -> ether (normalized price value)
             vars.tokensToDenom = mul_(mul_(vars.collateralFactor, vars.exchangeRate), vars.oraclePrice);
@@ -761,17 +791,29 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             vars.sumCollateral = mul_ScalarTruncateAddUInt(vars.tokensToDenom, vars.clTokenBalance, vars.sumCollateral);
 
             // sumBorrowPlusEffects += oraclePrice * borrowBalance
-            vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(vars.oraclePrice, vars.borrowBalance, vars.sumBorrowPlusEffects);
+            vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(
+                vars.oraclePrice,
+                vars.borrowBalance,
+                vars.sumBorrowPlusEffects
+            );
 
             // Calculate effects of interacting with clTokenModify
             if (asset == clTokenModify) {
                 // redeem effect
                 // sumBorrowPlusEffects += tokensToDenom * redeemTokens
-                vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(vars.tokensToDenom, redeemTokens, vars.sumBorrowPlusEffects);
+                vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(
+                    vars.tokensToDenom,
+                    redeemTokens,
+                    vars.sumBorrowPlusEffects
+                );
 
                 // borrow effect
                 // sumBorrowPlusEffects += oraclePrice * borrowAmount
-                vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(vars.oraclePrice, borrowAmount, vars.sumBorrowPlusEffects);
+                vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(
+                    vars.oraclePrice,
+                    borrowAmount,
+                    vars.sumBorrowPlusEffects
+                );
             }
         }
 
@@ -791,7 +833,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param actualRepayAmount The amount of clTokenBorrowed underlying to convert into clTokenCollateral tokens
      * @return (errorCode, number of clTokenCollateral tokens to be seized in a liquidation)
      */
-    function liquidateCalculateSeizeTokens(address clTokenBorrowed, address clTokenCollateral, uint actualRepayAmount) override external view returns (uint, uint) {
+    function liquidateCalculateSeizeTokens(
+        address clTokenBorrowed,
+        address clTokenCollateral,
+        uint actualRepayAmount
+    ) external view override returns (uint, uint) {
         /* Read oracle prices for borrowed and collateral markets */
         uint priceBorrowedMantissa = oracle.getUnderlyingPrice(ClToken(clTokenBorrowed));
         uint priceCollateralMantissa = oracle.getUnderlyingPrice(ClToken(clTokenCollateral));
@@ -811,8 +857,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         Exp memory denominator;
         Exp memory ratio;
 
-        numerator = mul_(Exp({mantissa: liquidationIncentiveMantissa}), Exp({mantissa: priceBorrowedMantissa}));
-        denominator = mul_(Exp({mantissa: priceCollateralMantissa}), Exp({mantissa: exchangeRateMantissa}));
+        numerator = mul_(Exp({ mantissa: liquidationIncentiveMantissa }), Exp({ mantissa: priceBorrowedMantissa }));
+        denominator = mul_(Exp({ mantissa: priceCollateralMantissa }), Exp({ mantissa: exchangeRateMantissa }));
         ratio = div_(numerator, denominator);
 
         seizeTokens = mul_ScalarTruncate(ratio, actualRepayAmount);
@@ -823,10 +869,10 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     /*** Admin Functions ***/
 
     /**
-      * @notice Sets a new price oracle for the comptroller
-      * @dev Admin function to set a new price oracle
-      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-      */
+     * @notice Sets a new price oracle for the comptroller
+     * @dev Admin function to set a new price oracle
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     */
     function _setPriceOracle(PriceOracle newOracle) public returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
@@ -846,14 +892,14 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-      * @notice Sets the closeFactor used when liquidating borrows
-      * @dev Admin function to set closeFactor
-      * @param newCloseFactorMantissa New close factor, scaled by 1e18
-      * @return uint 0=success, otherwise a failure
-      */
+     * @notice Sets the closeFactor used when liquidating borrows
+     * @dev Admin function to set closeFactor
+     * @param newCloseFactorMantissa New close factor, scaled by 1e18
+     * @return uint 0=success, otherwise a failure
+     */
     function _setCloseFactor(uint newCloseFactorMantissa) external returns (uint) {
         // Check caller is admin
-    	require(msg.sender == admin, "only admin can set close factor");
+        require(msg.sender == admin, "only admin can set close factor");
 
         uint oldCloseFactorMantissa = closeFactorMantissa;
         closeFactorMantissa = newCloseFactorMantissa;
@@ -863,12 +909,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-      * @notice Sets the collateralFactor for a market
-      * @dev Admin function to set per-market collateralFactor
-      * @param clToken The market to set the factor on
-      * @param newCollateralFactorMantissa The new collateral factor, scaled by 1e18
-      * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
-      */
+     * @notice Sets the collateralFactor for a market
+     * @dev Admin function to set per-market collateralFactor
+     * @param clToken The market to set the factor on
+     * @param newCollateralFactorMantissa The new collateral factor, scaled by 1e18
+     * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
+     */
     function _setCollateralFactor(ClToken clToken, uint newCollateralFactorMantissa) external returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
@@ -881,10 +927,10 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             return fail(Error.MARKET_NOT_LISTED, FailureInfo.SET_COLLATERAL_FACTOR_NO_EXISTS);
         }
 
-        Exp memory newCollateralFactorExp = Exp({mantissa: newCollateralFactorMantissa});
+        Exp memory newCollateralFactorExp = Exp({ mantissa: newCollateralFactorMantissa });
 
         // Check collateral factor <= 0.9
-        Exp memory highLimit = Exp({mantissa: collateralFactorMaxMantissa});
+        Exp memory highLimit = Exp({ mantissa: collateralFactorMaxMantissa });
         if (lessThanExp(highLimit, newCollateralFactorExp)) {
             return fail(Error.INVALID_COLLATERAL_FACTOR, FailureInfo.SET_COLLATERAL_FACTOR_VALIDATION);
         }
@@ -905,11 +951,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-      * @notice Sets liquidationIncentive
-      * @dev Admin function to set liquidationIncentive
-      * @param newLiquidationIncentiveMantissa New liquidationIncentive scaled by 1e18
-      * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
-      */
+     * @notice Sets liquidationIncentive
+     * @dev Admin function to set liquidationIncentive
+     * @param newLiquidationIncentiveMantissa New liquidationIncentive scaled by 1e18
+     * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
+     */
     function _setLiquidationIncentive(uint newLiquidationIncentiveMantissa) external returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
@@ -929,11 +975,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     /**
-      * @notice Add the market to the markets mapping and set it as listed
-      * @dev Admin function to set isListed and add support for the market
-      * @param clToken The address of the market (token) to list
-      * @return uint 0=success, otherwise a failure. (See enum Error for details)
-      */
+     * @notice Add the market to the markets mapping and set it as listed
+     * @dev Admin function to set isListed and add support for the market
+     * @param clToken The address of the market (token) to list
+     * @return uint 0=success, otherwise a failure. (See enum Error for details)
+     */
     function _supportMarket(ClToken clToken) external returns (uint) {
         if (msg.sender != admin) {
             return fail(Error.UNAUTHORIZED, FailureInfo.SUPPORT_MARKET_OWNER_CHECK);
@@ -960,7 +1006,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     function _addMarketInternal(address clToken) internal {
-        for (uint i = 0; i < allMarkets.length; i ++) {
+        for (uint i = 0; i < allMarkets.length; i++) {
             require(allMarkets[i] != ClToken(clToken), "market already added");
         }
         allMarkets.push(ClToken(clToken));
@@ -988,25 +1034,30 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         /*
          * Update market state block numbers
          */
-         supplyState.block = borrowState.block = blockNumber;
+        supplyState.block = borrowState.block = blockNumber;
     }
 
-
     /**
-      * @notice Set the given borrow caps for the given clToken markets. Borrowing that brings total borrows to or above borrow cap will revert.
-      * @dev Admin or borrowCapGuardian function to set the borrow caps. A borrow cap of 0 corresponds to unlimited borrowing.
-      * @param clTokens The addresses of the markets (tokens) to change the borrow caps for
-      * @param newBorrowCaps The new borrow cap values in underlying to be set. A value of 0 corresponds to unlimited borrowing.
-      */
+     * @notice Set the given borrow caps for the given clToken markets.
+     * Borrowing that brings total borrows to or above borrow cap will revert.
+     * @dev Admin or borrowCapGuardian function to set the borrow caps.
+     * A borrow cap of 0 corresponds to unlimited borrowing.
+     * @param clTokens The addresses of the markets (tokens) to change the borrow caps for
+     * @param newBorrowCaps The new borrow cap values in underlying to be set.
+     * A value of 0 corresponds to unlimited borrowing.
+     */
     function _setMarketBorrowCaps(ClToken[] calldata clTokens, uint[] calldata newBorrowCaps) external {
-    	require(msg.sender == admin || msg.sender == borrowCapGuardian, "only admin or borrow cap guardian can set borrow caps");
+        require(
+            msg.sender == admin || msg.sender == borrowCapGuardian,
+            "only admin or borrow cap guardian can set borrow caps"
+        );
 
         uint numMarkets = clTokens.length;
         uint numBorrowCaps = newBorrowCaps.length;
 
         require(numMarkets != 0 && numMarkets == numBorrowCaps, "invalid input");
 
-        for(uint i = 0; i < numMarkets; i++) {
+        for (uint i = 0; i < numMarkets; i++) {
             borrowCaps[address(clTokens[i])] = newBorrowCaps[i];
             emit NewBorrowCap(clTokens[i], newBorrowCaps[i]);
         }
@@ -1096,8 +1147,10 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
     /// @notice Delete this function after proposal 65 is executed
     function fixBadAccruals(address[] calldata affectedUsers, uint[] calldata amounts) external {
-        require(msg.sender == admin, "Only admin can call this function"); // Only the timelock can call this function
-        require(!proposal65FixExecuted, "Already executed this one-off function"); // Require that this function is only called once
+        // Only the timelock can call this function
+        require(msg.sender == admin, "Only admin can call this function");
+        // Require that this function is only called once
+        require(!proposal65FixExecuted, "Already executed this one-off function");
         require(affectedUsers.length == amounts.length, "Invalid input");
 
         // Loop variables
@@ -1117,7 +1170,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             // The user has less currently accrued than the amount they incorrectly received.
             if (amountToSubtract > currentAccrual) {
                 // Amount of CLR the user owes the protocol
-                uint accountReceivable = amountToSubtract - currentAccrual; // Underflow safe since amountToSubtract > currentAccrual
+                // Underflow safe since amountToSubtract > currentAccrual
+                uint accountReceivable = amountToSubtract - currentAccrual;
 
                 uint oldReceivable = clrReceivable[user];
                 uint newReceivable = add_(oldReceivable, accountReceivable);
@@ -1176,7 +1230,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             // Borrow speed updated so let's update borrow state to ensure that
             //  1. CLR accrued properly for the old speed, and
             //  2. CLR accrued at the new speed starts after this block.
-            Exp memory borrowIndex = Exp({mantissa: clToken.borrowIndex()});
+            Exp memory borrowIndex = Exp({ mantissa: clToken.borrowIndex() });
             updateClrBorrowIndex(address(clToken), borrowIndex);
 
             // Update speed and emit event
@@ -1198,8 +1252,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         if (deltaBlocks > 0 && supplySpeed > 0) {
             uint supplyTokens = ClToken(clToken).totalSupply();
             uint clrAccrued = mul_(deltaBlocks, supplySpeed);
-            Double memory ratio = supplyTokens > 0 ? fraction(clrAccrued, supplyTokens) : Double({mantissa: 0});
-            supplyState.index = safe224(add_(Double({mantissa: supplyState.index}), ratio).mantissa, "new index exceeds 224 bits");
+            Double memory ratio = supplyTokens > 0 ? fraction(clrAccrued, supplyTokens) : Double({ mantissa: 0 });
+            supplyState.index = safe224(
+                add_(Double({ mantissa: supplyState.index }), ratio).mantissa,
+                "new index exceeds 224 bits"
+            );
             supplyState.block = blockNumber;
         } else if (deltaBlocks > 0) {
             supplyState.block = blockNumber;
@@ -1219,8 +1276,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         if (deltaBlocks > 0 && borrowSpeed > 0) {
             uint borrowAmount = div_(ClToken(clToken).totalBorrows(), marketBorrowIndex);
             uint clrAccrued = mul_(deltaBlocks, borrowSpeed);
-            Double memory ratio = borrowAmount > 0 ? fraction(clrAccrued, borrowAmount) : Double({mantissa: 0});
-            borrowState.index = safe224(add_(Double({mantissa: borrowState.index}), ratio).mantissa, "new index exceeds 224 bits");
+            Double memory ratio = borrowAmount > 0 ? fraction(clrAccrued, borrowAmount) : Double({ mantissa: 0 });
+            borrowState.index = safe224(
+                add_(Double({ mantissa: borrowState.index }), ratio).mantissa,
+                "new index exceeds 224 bits"
+            );
             borrowState.block = blockNumber;
         } else if (deltaBlocks > 0) {
             borrowState.block = blockNumber;
@@ -1252,7 +1312,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         }
 
         // Calculate change in the cumulative sum of the CLR per clToken accrued
-        Double memory deltaIndex = Double({mantissa: sub_(supplyIndex, supplierIndex)});
+        Double memory deltaIndex = Double({ mantissa: sub_(supplyIndex, supplierIndex) });
 
         uint supplierTokens = ClToken(clToken).balanceOf(supplier);
 
@@ -1291,7 +1351,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         }
 
         // Calculate change in the cumulative sum of the CLR per borrowed unit accrued
-        Double memory deltaIndex = Double({mantissa: sub_(borrowIndex, borrowerIndex)});
+        Double memory deltaIndex = Double({ mantissa: sub_(borrowIndex, borrowerIndex) });
 
         uint borrowerAmount = div_(ClToken(clToken).borrowBalanceStored(borrower), marketBorrowIndex);
 
@@ -1352,7 +1412,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             ClToken clToken = clTokens[i];
             require(markets[address(clToken)].isListed, "market must be listed");
             if (borrowers == true) {
-                Exp memory borrowIndex = Exp({mantissa: clToken.borrowIndex()});
+                Exp memory borrowIndex = Exp({ mantissa: clToken.borrowIndex() });
                 updateClrBorrowIndex(address(clToken), borrowIndex);
                 for (uint j = 0; j < holders.length; j++) {
                     distributeBorrowerClr(address(clToken), holders[j], borrowIndex);
@@ -1412,7 +1472,10 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         require(adminOrInitializing(), "only admin can set clr speed");
 
         uint numTokens = clTokens.length;
-        require(numTokens == supplySpeeds.length && numTokens == borrowSpeeds.length, "Comptroller::_setClrSpeeds invalid input");
+        require(
+            numTokens == supplySpeeds.length && numTokens == borrowSpeeds.length,
+            "Comptroller::_setClrSpeeds invalid input"
+        );
 
         for (uint i = 0; i < numTokens; ++i) {
             setClrSpeedInternal(clTokens[i], supplySpeeds[i], borrowSpeeds[i]);
@@ -1458,11 +1521,10 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         return
             markets[address(clToken)].collateralFactorMantissa == 0 &&
             borrowGuardianPaused[address(clToken)] == true &&
-            clToken.reserveFactorMantissa() == 1e18
-        ;
+            clToken.reserveFactorMantissa() == 1e18;
     }
 
-    function getBlockNumber() virtual public view returns (uint) {
+    function getBlockNumber() public view virtual returns (uint) {
         return block.number;
     }
 
@@ -1470,7 +1532,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @notice Return the address of the CLR token
      * @return The address of CLR
      */
-    function getClrAddress() virtual public view returns (address) {
+    function getClrAddress() public view virtual returns (address) {
         return 0xc00e94Cb662C3520282E6f5717214004A7f26888;
     }
 }
