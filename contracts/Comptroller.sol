@@ -23,19 +23,19 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     /// @notice Emitted when an account exits a market
     event MarketExited(ClToken clToken, address account);
 
-    /// @notice Emitted when close factor is changed by admin
+    /// @notice Emitted when close factor is updated by admin
     event NewCloseFactor(uint oldCloseFactorMantissa, uint newCloseFactorMantissa);
 
-    /// @notice Emitted when a collateral factor is changed by admin
+    /// @notice Emitted when a collateral factor is updated by admin
     event NewCollateralFactor(ClToken clToken, uint oldCollateralFactorMantissa, uint newCollateralFactorMantissa);
 
-    /// @notice Emitted when liquidation incentive is changed by admin
+    /// @notice Emitted when liquidation incentive is updated by admin
     event NewLiquidationIncentive(uint oldLiquidationIncentiveMantissa, uint newLiquidationIncentiveMantissa);
 
-    /// @notice Emitted when price oracle is changed
+    /// @notice Emitted when price oracle is updated
     event NewPriceOracle(PriceOracle oldPriceOracle, PriceOracle newPriceOracle);
 
-    /// @notice Emitted when pause guardian is changed
+    /// @notice Emitted when pause guardian is updated
     event NewPauseGuardian(address oldPauseGuardian, address newPauseGuardian);
 
     /// @notice Emitted when an action is paused globally
@@ -174,7 +174,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         ClToken clToken = ClToken(clTokenAddress);
         /* Get sender tokensHeld and amountOwed underlying from the clToken */
         (uint oErr, uint tokensHeld, uint amountOwed, ) = clToken.getAccountSnapshot(msg.sender);
-        require(oErr == 0, "exitMarket: getAccountSnapshot failed"); // semi-opaque error code
+        if (oErr != 0) {
+            revert ExitMarketGetAccountSnapshotFailed();
+        }
 
         /* Fail if the sender has a borrow balance */
         if (amountOwed != 0) {
@@ -233,8 +235,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      */
     function mintAllowed(address clToken, address minter, uint mintAmount) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!mintGuardianPaused[clToken], "mint is paused");
-
+        if (mintGuardianPaused[clToken]) {
+            revert MintIsPaused();
+        }
         // Shh - currently unused
         minter;
         mintAmount;
@@ -331,7 +334,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         // Require tokens is zero or amount is also zero
         if (redeemTokens == 0 && redeemAmount > 0) {
-            revert("redeemTokens zero");
+            revert ZeroRedeemTokens();
         }
     }
 
@@ -344,7 +347,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      */
     function borrowAllowed(address clToken, address borrower, uint borrowAmount) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!borrowGuardianPaused[clToken], "borrow is paused");
+        if (borrowGuardianPaused[clToken]) {
+            revert BorrowIsPaused();
+        }
 
         if (!markets[clToken].isListed) {
             return uint(Error.MARKET_NOT_LISTED);
@@ -352,8 +357,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         if (!markets[clToken].accountMembership[borrower]) {
             // only clTokens may call borrowAllowed if borrower not in market
-            require(msg.sender == clToken, "sender must be clToken");
-
+            if (msg.sender != clToken) {
+                revert SenderMustBeClToken();
+            }
             // attempt to add borrower to the market
             Error _err = addToMarketInternal(ClToken(msg.sender), borrower);
             if (_err != Error.NO_ERROR) {
@@ -373,7 +379,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         if (borrowCap != 0) {
             uint totalBorrows = ClToken(clToken).totalBorrows();
             uint nextTotalBorrows = add_(totalBorrows, borrowAmount);
-            require(nextTotalBorrows < borrowCap, "market borrow cap reached");
+            if (nextTotalBorrows >= borrowCap) {
+                revert BorrowCapReached();
+            }
         }
 
         (Error _err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(

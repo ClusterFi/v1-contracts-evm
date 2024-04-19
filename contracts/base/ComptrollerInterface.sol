@@ -2,6 +2,13 @@
 pragma solidity ^0.8.20;
 
 abstract contract ComptrollerInterface {
+    error ExitMarketGetAccountSnapshotFailed();
+    error MintIsPaused();
+    error BorrowIsPaused();
+    error ZeroRedeemTokens();
+    error SenderMustBeClToken();
+    error BorrowCapReached();
+    
     /// @notice Indicator that this is a Comptroller contract (for inspection)
     bool public constant isComptroller = true;
 
