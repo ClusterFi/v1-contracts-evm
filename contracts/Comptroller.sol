@@ -508,7 +508,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         /* allow accounts to be liquidated if the market is deprecated */
         if (isDeprecated(ClToken(clTokenBorrowed))) {
-            require(borrowBalance >= repayAmount, "Can not repay more than the total borrow");
+            if (borrowBalance < repayAmount) revert RepayShouldBeLessThanTotalBorrow();
         } else {
             /* The borrower must have shortfall in order to be liquidatable */
             (Error err, , uint shortfall) = getAccountLiquidityInternal(borrower);
@@ -575,7 +575,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         uint seizeTokens
     ) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!seizeGuardianPaused, "seize is paused");
+        if (seizeGuardianPaused) {
+            revert SeizeIsPaused();
+        }
 
         // Shh - currently unused
         seizeTokens;
@@ -639,7 +641,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         uint transferTokens
     ) external override returns (uint) {
         // Pausing is a very serious situation - we revert to sound the alarms
-        require(!transferGuardianPaused, "transfer is paused");
+        if (transferGuardianPaused) {
+            revert TransferIsPaused();
+        }
 
         // Currently the only consideration is whether or not
         //  the src is allowed to redeem this many tokens
@@ -907,7 +911,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      */
     function _setCloseFactor(uint newCloseFactorMantissa) external returns (uint) {
         // Check caller is admin
-        require(msg.sender == admin, "only admin can set close factor");
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
 
         uint oldCloseFactorMantissa = closeFactorMantissa;
         closeFactorMantissa = newCloseFactorMantissa;
@@ -1015,7 +1021,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
     function _addMarketInternal(address clToken) internal {
         for (uint i = 0; i < allMarkets.length; i++) {
-            require(allMarkets[i] != ClToken(clToken), "market already added");
+            if (allMarkets[i] == ClToken(clToken)) {
+                revert MarketAlreadyAdded();
+            }
         }
         allMarkets.push(ClToken(clToken));
     }
@@ -1055,15 +1063,16 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * A value of 0 corresponds to unlimited borrowing.
      */
     function _setMarketBorrowCaps(ClToken[] calldata clTokens, uint[] calldata newBorrowCaps) external {
-        require(
-            msg.sender == admin || msg.sender == borrowCapGuardian,
-            "only admin or borrow cap guardian can set borrow caps"
-        );
+        if (msg.sender != admin && msg.sender != borrowCapGuardian) {
+            revert NotAdminOrBorrowCapGuardian();
+        }
 
         uint numMarkets = clTokens.length;
         uint numBorrowCaps = newBorrowCaps.length;
 
-        require(numMarkets != 0 && numMarkets == numBorrowCaps, "invalid input");
+        if (numMarkets == 0 || numMarkets != numBorrowCaps) {
+            revert ArrayLengthMismatch();
+        }
 
         for (uint i = 0; i < numMarkets; i++) {
             borrowCaps[address(clTokens[i])] = newBorrowCaps[i];
@@ -1076,7 +1085,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param newBorrowCapGuardian The address of the new Borrow Cap Guardian
      */
     function _setBorrowCapGuardian(address newBorrowCapGuardian) external {
-        require(msg.sender == admin, "only admin can set borrow cap guardian");
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
 
         // Save current value for inclusion in log
         address oldBorrowCapGuardian = borrowCapGuardian;
@@ -1111,9 +1122,15 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     function _setMintPaused(ClToken clToken, bool state) public returns (bool) {
-        require(markets[address(clToken)].isListed, "cannot pause a market that is not listed");
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
+        if (!markets[address(clToken)].isListed) {
+            revert MarketIsNotListed();
+        }
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
 
         mintGuardianPaused[address(clToken)] = state;
         emit ActionPaused(clToken, "Mint", state);
@@ -1121,9 +1138,15 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     function _setBorrowPaused(ClToken clToken, bool state) public returns (bool) {
-        require(markets[address(clToken)].isListed, "cannot pause a market that is not listed");
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
+        if (!markets[address(clToken)].isListed) {
+            revert MarketIsNotListed();
+        }
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
 
         borrowGuardianPaused[address(clToken)] = state;
         emit ActionPaused(clToken, "Borrow", state);
@@ -1131,8 +1154,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     function _setTransferPaused(bool state) public returns (bool) {
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
 
         transferGuardianPaused = state;
         emit ActionPaused("Transfer", state);
@@ -1140,8 +1167,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     function _setSeizePaused(bool state) public returns (bool) {
-        require(msg.sender == pauseGuardian || msg.sender == admin, "only pause guardian and admin can pause");
-        require(msg.sender == admin || state == true, "only admin can unpause");
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
 
         seizeGuardianPaused = state;
         emit ActionPaused("Seize", state);
@@ -1149,59 +1180,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     }
 
     function _become(Unitroller unitroller) public {
-        require(msg.sender == unitroller.admin(), "only unitroller admin can change brains");
-        require(unitroller._acceptImplementation() == 0, "change not authorized");
-    }
-
-    /// @notice Delete this function after proposal 65 is executed
-    function fixBadAccruals(address[] calldata affectedUsers, uint[] calldata amounts) external {
-        // Only the timelock can call this function
-        require(msg.sender == admin, "Only admin can call this function");
-        // Require that this function is only called once
-        require(!proposal65FixExecuted, "Already executed this one-off function");
-        require(affectedUsers.length == amounts.length, "Invalid input");
-
-        // Loop variables
-        address user;
-        uint currentAccrual;
-        uint amountToSubtract;
-        uint newAccrual;
-
-        // Iterate through all affected users
-        for (uint i = 0; i < affectedUsers.length; ++i) {
-            user = affectedUsers[i];
-            currentAccrual = clrAccrued[user];
-
-            amountToSubtract = amounts[i];
-
-            // The case where the user has claimed and received an incorrect amount of CLR.
-            // The user has less currently accrued than the amount they incorrectly received.
-            if (amountToSubtract > currentAccrual) {
-                // Amount of CLR the user owes the protocol
-                // Underflow safe since amountToSubtract > currentAccrual
-                uint accountReceivable = amountToSubtract - currentAccrual;
-
-                uint oldReceivable = clrReceivable[user];
-                uint newReceivable = add_(oldReceivable, accountReceivable);
-
-                // Accounting: record the CLR debt for the user
-                clrReceivable[user] = newReceivable;
-
-                emit ClrReceivableUpdated(user, oldReceivable, newReceivable);
-
-                amountToSubtract = currentAccrual;
-            }
-
-            if (amountToSubtract > 0) {
-                // Subtract the bad accrual amount from what they have accrued.
-                // Users will keep whatever they have correctly accrued.
-                clrAccrued[user] = newAccrual = sub_(currentAccrual, amountToSubtract);
-
-                emit ClrAccruedAdjusted(user, currentAccrual, newAccrual);
-            }
+        if (msg.sender != unitroller.admin()) {
+            revert NotUnitrollerAdmin();
         }
-
-        proposal65FixExecuted = true; // Makes it so that this function cannot be called again
+        if (unitroller._acceptImplementation() != 0) {
+            revert ChangeNotAuthorized();
+        }
     }
 
     /**
@@ -1211,7 +1195,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         return msg.sender == admin || msg.sender == comptrollerImplementation;
     }
 
-    /*** Clr Distribution ***/
+    /*** CLR Distribution ***/
 
     /**
      * @notice Set CLR speed for a single market
@@ -1221,7 +1205,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      */
     function setClrSpeedInternal(ClToken clToken, uint supplySpeed, uint borrowSpeed) internal {
         Market storage market = markets[address(clToken)];
-        require(market.isListed, "clr market is not listed");
+        if (!market.isListed) {
+            revert MarketIsNotListed();
+        }
 
         if (clrSupplySpeeds[address(clToken)] != supplySpeed) {
             // Supply speed updated so let's update supply state to ensure that
@@ -1418,7 +1404,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     function claimClr(address[] memory holders, ClToken[] memory clTokens, bool borrowers, bool suppliers) public {
         for (uint i = 0; i < clTokens.length; i++) {
             ClToken clToken = clTokens[i];
-            require(markets[address(clToken)].isListed, "market must be listed");
+            if (!markets[address(clToken)].isListed) {
+                revert MarketIsNotListed();
+            }
             if (borrowers == true) {
                 Exp memory borrowIndex = Exp({ mantissa: clToken.borrowIndex() });
                 updateClrBorrowIndex(address(clToken), borrowIndex);
@@ -1464,9 +1452,13 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param amount The amount of CLR to (possibly) transfer
      */
     function _grantClr(address recipient, uint amount) public {
-        require(adminOrInitializing(), "only admin can grant clr");
+        if (!adminOrInitializing()) {
+            revert NotAdmin();
+        }
         uint amountLeft = grantClrInternal(recipient, amount);
-        require(amountLeft == 0, "insufficient clr for grant");
+        if (amountLeft > 0) {
+            revert InsufficientClrForGrant();
+        }
         emit ClrGranted(recipient, amount);
     }
 
@@ -1477,13 +1469,14 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param borrowSpeeds New borrow-side CLR speed for the corresponding market.
      */
     function _setClrSpeeds(ClToken[] memory clTokens, uint[] memory supplySpeeds, uint[] memory borrowSpeeds) public {
-        require(adminOrInitializing(), "only admin can set clr speed");
+        if (!adminOrInitializing()) {
+            revert NotAdmin();
+        }
 
         uint numTokens = clTokens.length;
-        require(
-            numTokens == supplySpeeds.length && numTokens == borrowSpeeds.length,
-            "Comptroller::_setClrSpeeds invalid input"
-        );
+        if (numTokens != supplySpeeds.length || numTokens != borrowSpeeds.length) {
+            revert ArrayLengthMismatch();
+        }
 
         for (uint i = 0; i < numTokens; ++i) {
             setClrSpeedInternal(clTokens[i], supplySpeeds[i], borrowSpeeds[i]);
@@ -1496,7 +1489,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param clrSpeed New CLR speed for contributor
      */
     function _setContributorClrSpeed(address contributor, uint clrSpeed) public {
-        require(adminOrInitializing(), "only admin can set clr speed");
+        if (!adminOrInitializing()) {
+            revert NotAdmin();
+        }
 
         // note that CLR speed could be set to 0 to halt liquidity rewards for a contributor
         updateContributorRewards(contributor);

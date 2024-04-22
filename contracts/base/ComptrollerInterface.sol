@@ -8,7 +8,19 @@ abstract contract ComptrollerInterface {
     error ZeroRedeemTokens();
     error SenderMustBeClToken();
     error BorrowCapReached();
-    
+    error SeizeIsPaused();
+    error TransferIsPaused();
+    error NotAdmin();
+    error MarketAlreadyAdded();
+    error NotAdminOrBorrowCapGuardian();
+    error ArrayLengthMismatch();
+    error MarketIsNotListed();
+    error NotAdminOrPauseGuardian();
+    error NotUnitrollerAdmin();
+    error ChangeNotAuthorized();
+    error InsufficientClrForGrant();
+    error RepayShouldBeLessThanTotalBorrow();
+
     /// @notice Indicator that this is a Comptroller contract (for inspection)
     bool public constant isComptroller = true;
 
