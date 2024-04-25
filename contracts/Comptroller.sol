@@ -327,7 +327,12 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
      * @param redeemAmount The amount of the underlying asset being redeemed
      * @param redeemTokens The number of tokens being redeemed
      */
-    function redeemVerify(address clToken, address redeemer, uint redeemAmount, uint redeemTokens) external override {
+    function redeemVerify(
+        address clToken,
+        address redeemer,
+        uint redeemAmount,
+        uint redeemTokens
+    ) external pure override {
         // Shh - currently unused
         clToken;
         redeemer;
@@ -1244,9 +1249,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
         uint deltaBlocks = sub_(uint(blockNumber), uint(supplyState.block));
         if (deltaBlocks > 0 && supplySpeed > 0) {
-            uint supplyTokens = ClToken(clToken).totalSupply();
-            uint clrAccrued = mul_(deltaBlocks, supplySpeed);
-            Double memory ratio = supplyTokens > 0 ? fraction(clrAccrued, supplyTokens) : Double({ mantissa: 0 });
+            uint _supplyTokens = ClToken(clToken).totalSupply();
+            uint _clrAccrued = mul_(deltaBlocks, supplySpeed);
+            Double memory ratio = _supplyTokens > 0 ? fraction(_clrAccrued, _supplyTokens) : Double({ mantissa: 0 });
             supplyState.index = safe224(
                 add_(Double({ mantissa: supplyState.index }), ratio).mantissa,
                 "new index exceeds 224 bits"
