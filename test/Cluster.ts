@@ -1,6 +1,6 @@
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
   
 describe("Cluster Token", function () {
     const TOTAL_SUPPLY = 10_000_000;
@@ -11,8 +11,7 @@ describe("Cluster Token", function () {
       // Contracts are deployed using the first signer/account by default
       const [deployer] = await ethers.getSigners();
   
-      const ClusterToken = await ethers.getContractFactory("Cluster");
-      const clusterToken = await upgrades.deployProxy(ClusterToken);
+      const clusterToken = await ethers.deployContract("Cluster", [deployer.address]);
   
       return { clusterToken, deployer };
     }
