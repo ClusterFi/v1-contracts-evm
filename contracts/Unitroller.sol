@@ -13,7 +13,10 @@ contract Unitroller is UnitrollerAdminStorage, ComptrollerErrorReporter {
     /**
      * @notice Emitted when pendingComptrollerImplementation is updated
      */
-    event NewPendingImplementation(address oldPendingImplementation, address newPendingImplementation);
+    event NewPendingImplementation(
+        address oldPendingImplementation,
+        address newPendingImplementation
+    );
 
     /**
      * @notice Emitted when pendingComptrollerImplementation is accepted, which means
@@ -57,8 +60,12 @@ contract Unitroller is UnitrollerAdminStorage, ComptrollerErrorReporter {
      */
     function _acceptImplementation() public returns (uint) {
         // Check caller is pendingImplementation and pendingImplementation ≠ address(0)
-        if (msg.sender != pendingComptrollerImplementation || pendingComptrollerImplementation == address(0)) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.ACCEPT_PENDING_IMPLEMENTATION_ADDRESS_CHECK);
+        if (
+            msg.sender != pendingComptrollerImplementation ||
+            pendingComptrollerImplementation == address(0)
+        ) {
+            return
+                fail(Error.UNAUTHORIZED, FailureInfo.ACCEPT_PENDING_IMPLEMENTATION_ADDRESS_CHECK);
         }
 
         // Save current values for inclusion in log

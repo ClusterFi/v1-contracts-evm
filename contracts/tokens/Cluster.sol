@@ -47,7 +47,11 @@ contract Cluster {
     mapping(address => uint) public nonces;
 
     /// @notice An event thats emitted when an account changes its delegate
-    event DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate);
+    event DelegateChanged(
+        address indexed delegator,
+        address indexed fromDelegate,
+        address indexed toDelegate
+    );
 
     /// @notice An event thats emitted when a delegate account's vote balance changes
     event DelegateVotesChanged(address indexed delegate, uint previousBalance, uint newBalance);
@@ -164,7 +168,14 @@ contract Cluster {
      * @param r Half of the ECDSA signature pair
      * @param s Half of the ECDSA signature pair
      */
-    function delegateBySig(address delegatee, uint nonce, uint expiry, uint8 v, bytes32 r, bytes32 s) public {
+    function delegateBySig(
+        address delegatee,
+        uint nonce,
+        uint expiry,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public {
         bytes32 domainSeparator = keccak256(
             abi.encode(DOMAIN_TYPEHASH, keccak256(bytes(name)), block.chainid, address(this))
         );
@@ -239,11 +250,22 @@ contract Cluster {
     }
 
     function _transferTokens(address src, address dst, uint96 amount) internal {
-        require(src != address(0), "Cluster::_transferTokens: cannot transfer from the zero address");
+        require(
+            src != address(0),
+            "Cluster::_transferTokens: cannot transfer from the zero address"
+        );
         require(dst != address(0), "Cluster::_transferTokens: cannot transfer to the zero address");
 
-        balances[src] = sub96(balances[src], amount, "Cluster::_transferTokens: transfer amount exceeds balance");
-        balances[dst] = add96(balances[dst], amount, "Cluster::_transferTokens: transfer amount overflows");
+        balances[src] = sub96(
+            balances[src],
+            amount,
+            "Cluster::_transferTokens: transfer amount exceeds balance"
+        );
+        balances[dst] = add96(
+            balances[dst],
+            amount,
+            "Cluster::_transferTokens: transfer amount overflows"
+        );
         emit Transfer(src, dst, amount);
 
         _moveDelegates(delegates[src], delegates[dst], amount);
@@ -254,21 +276,37 @@ contract Cluster {
             if (srcRep != address(0)) {
                 uint32 srcRepNum = numCheckpoints[srcRep];
                 uint96 srcRepOld = srcRepNum > 0 ? checkpoints[srcRep][srcRepNum - 1].votes : 0;
-                uint96 srcRepNew = sub96(srcRepOld, amount, "Cluster::_moveVotes: vote amount underflows");
+                uint96 srcRepNew = sub96(
+                    srcRepOld,
+                    amount,
+                    "Cluster::_moveVotes: vote amount underflows"
+                );
                 _writeCheckpoint(srcRep, srcRepNum, srcRepOld, srcRepNew);
             }
 
             if (dstRep != address(0)) {
                 uint32 dstRepNum = numCheckpoints[dstRep];
                 uint96 dstRepOld = dstRepNum > 0 ? checkpoints[dstRep][dstRepNum - 1].votes : 0;
-                uint96 dstRepNew = add96(dstRepOld, amount, "Cluster::_moveVotes: vote amount overflows");
+                uint96 dstRepNew = add96(
+                    dstRepOld,
+                    amount,
+                    "Cluster::_moveVotes: vote amount overflows"
+                );
                 _writeCheckpoint(dstRep, dstRepNum, dstRepOld, dstRepNew);
             }
         }
     }
 
-    function _writeCheckpoint(address delegatee, uint32 nCheckpoints, uint96 oldVotes, uint96 newVotes) internal {
-        uint32 blockNumber = safe32(block.number, "Cluster::_writeCheckpoint: block number exceeds 32 bits");
+    function _writeCheckpoint(
+        address delegatee,
+        uint32 nCheckpoints,
+        uint96 oldVotes,
+        uint96 newVotes
+    ) internal {
+        uint32 blockNumber = safe32(
+            block.number,
+            "Cluster::_writeCheckpoint: block number exceeds 32 bits"
+        );
 
         if (nCheckpoints > 0 && checkpoints[delegatee][nCheckpoints - 1].fromBlock == blockNumber) {
             checkpoints[delegatee][nCheckpoints - 1].votes = newVotes;

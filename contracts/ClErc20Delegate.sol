@@ -5,8 +5,8 @@ import "./ClErc20.sol";
 
 /**
  * @title Cluster's ClErc20Delegate Contract
- * @notice ClTokens which wrap an EIP-20 underlying and are delegated to
- *         modified version of Compound's CErc20Delegate
+ * @notice ClTokens which wrap an EIP-20 underlying and are delegated to.
+ * This is the modified version of Compound's CErc20Delegate
  * @author Cluster
  */
 contract ClErc20Delegate is ClErc20, ClDelegateInterface {

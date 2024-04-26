@@ -124,4 +124,5 @@ contract TokenErrorReporter {
 
     error SetInterestRateModelOwnerCheck();
     error SetInterestRateModelFreshCheck();
+    error InvalidInterestRateModel();
 }

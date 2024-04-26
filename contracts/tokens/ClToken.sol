@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "../base/ComptrollerInterface.sol";
 import "../base/ClTokenInterfaces.sol";
-import "../base/InterestRateModel.sol";
+import "../interfaces/IInterestRateModel.sol";
 import "../interfaces/EIP20Interface.sol";
 import "../ErrorReporter.sol";
 import "../ExponentialNoError.sol";
@@ -25,7 +25,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      */
     function initialize(
         ComptrollerInterface comptroller_,
-        InterestRateModel interestRateModel_,
+        address interestRateModel_,
         uint initialExchangeRateMantissa_,
         string memory name_,
         string memory symbol_,
@@ -36,7 +36,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
 
         // Set initial exchange rate
         initialExchangeRateMantissa = initialExchangeRateMantissa_;
-        require(initialExchangeRateMantissa > 0, "initial exchange rate must be greater than zero.");
+        require(
+            initialExchangeRateMantissa > 0,
+            "initial exchange rate must be greater than zero."
+        );
 
         // Set the comptroller
         uint err = _setComptroller(comptroller_);
@@ -67,7 +70,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param tokens The number of tokens to transfer
      * @return 0 if the transfer succeeded, else revert
      */
-    function transferTokens(address spender, address src, address dst, uint tokens) internal returns (uint) {
+    function transferTokens(
+        address spender,
+        address src,
+        address dst,
+        uint tokens
+    ) internal returns (uint) {
         /* Fail if transfer not allowed */
         uint allowed = comptroller.transferAllowed(address(this), src, dst, tokens);
         if (allowed != 0) {
@@ -130,7 +138,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param amount The number of tokens to transfer
      * @return Whether or not the transfer succeeded
      */
-    function transferFrom(address src, address dst, uint256 amount) external override nonReentrant returns (bool) {
+    function transferFrom(
+        address src,
+        address dst,
+        uint256 amount
+    ) external override nonReentrant returns (bool) {
         return transferTokens(msg.sender, src, dst, amount) == NO_ERROR;
     }
 
@@ -185,8 +197,15 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param account Address of the account to snapshot
      * @return (possible error, token balance, borrow balance, exchange rate mantissa)
      */
-    function getAccountSnapshot(address account) external view override returns (uint, uint, uint, uint) {
-        return (NO_ERROR, accountTokens[account], borrowBalanceStoredInternal(account), exchangeRateStoredInternal());
+    function getAccountSnapshot(
+        address account
+    ) external view override returns (uint, uint, uint, uint) {
+        return (
+            NO_ERROR,
+            accountTokens[account],
+            borrowBalanceStoredInternal(account),
+            exchangeRateStoredInternal()
+        );
     }
 
     /**
@@ -202,7 +221,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @return The borrow interest rate per block, scaled by 1e18
      */
     function borrowRatePerBlock() external view override returns (uint) {
-        return interestRateModel.getBorrowRate(getCashPrior(), totalBorrows, totalReserves);
+        return
+            IInterestRateModel(interestRateModel).getBorrowRate(
+                getCashPrior(),
+                totalBorrows,
+                totalReserves
+            );
     }
 
     /**
@@ -210,7 +234,13 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @return The supply interest rate per block, scaled by 1e18
      */
     function supplyRatePerBlock() external view override returns (uint) {
-        return interestRateModel.getSupplyRate(getCashPrior(), totalBorrows, totalReserves, reserveFactorMantissa);
+        return
+            IInterestRateModel(interestRateModel).getSupplyRate(
+                getCashPrior(),
+                totalBorrows,
+                totalReserves,
+                reserveFactorMantissa
+            );
     }
 
     /**
@@ -339,7 +369,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         uint borrowIndexPrior = borrowIndex;
 
         /* Calculate the current borrow interest rate */
-        uint borrowRateMantissa = interestRateModel.getBorrowRate(cashPrior, borrowsPrior, reservesPrior);
+        uint borrowRateMantissa = IInterestRateModel(interestRateModel).getBorrowRate(
+            cashPrior,
+            borrowsPrior,
+            reservesPrior
+        );
         require(borrowRateMantissa <= borrowRateMaxMantissa, "borrow rate is absurdly high");
 
         /* Calculate the number of blocks elapsed since the last accrual */
@@ -362,7 +396,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
             interestAccumulated,
             reservesPrior
         );
-        uint borrowIndexNew = mul_ScalarTruncateAddUInt(simpleInterestFactor, borrowIndexPrior, borrowIndexPrior);
+        uint borrowIndexNew = mul_ScalarTruncateAddUInt(
+            simpleInterestFactor,
+            borrowIndexPrior,
+            borrowIndexPrior
+        );
 
         /////////////////////////
         // EFFECTS & INTERACTIONS
@@ -481,8 +519,15 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param redeemAmountIn The number of underlying tokens to receive from redeeming clTokens
      * (only one of redeemTokensIn or redeemAmountIn may be non-zero)
      */
-    function redeemFresh(address payable redeemer, uint redeemTokensIn, uint redeemAmountIn) internal {
-        require(redeemTokensIn == 0 || redeemAmountIn == 0, "one of redeemTokensIn or redeemAmountIn must be zero");
+    function redeemFresh(
+        address payable redeemer,
+        uint redeemTokensIn,
+        uint redeemAmountIn
+    ) internal {
+        require(
+            redeemTokensIn == 0 || redeemAmountIn == 0,
+            "one of redeemTokensIn or redeemAmountIn must be zero"
+        );
 
         /* exchangeRate = invoke Exchange Rate Stored() */
         Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
@@ -643,7 +688,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param repayAmount the amount of underlying tokens being returned, or -1 for the full outstanding amount
      * @return (uint) the actual repayment amount.
      */
-    function repayBorrowFresh(address payer, address borrower, uint repayAmount) internal returns (uint) {
+    function repayBorrowFresh(
+        address payer,
+        address borrower,
+        uint repayAmount
+    ) internal returns (uint) {
         /* Fail if repayBorrow not allowed */
         uint allowed = comptroller.repayBorrowAllowed(address(this), payer, borrower, repayAmount);
         if (allowed != 0) {
@@ -782,7 +831,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
             address(clTokenCollateral),
             actualRepayAmount
         );
-        require(amountSeizeError == NO_ERROR, "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED");
+        require(
+            amountSeizeError == NO_ERROR,
+            "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED"
+        );
 
         /* Revert if borrower collateral token balance < seizeTokens */
         require(clTokenCollateral.balanceOf(borrower) >= seizeTokens, "LIQUIDATE_SEIZE_TOO_MUCH");
@@ -791,11 +843,20 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         if (address(clTokenCollateral) == address(this)) {
             seizeInternal(address(this), liquidator, borrower, seizeTokens);
         } else {
-            require(clTokenCollateral.seize(liquidator, borrower, seizeTokens) == NO_ERROR, "token seizure failed");
+            require(
+                clTokenCollateral.seize(liquidator, borrower, seizeTokens) == NO_ERROR,
+                "token seizure failed"
+            );
         }
 
         /* We emit a LiquidateBorrow event */
-        emit LiquidateBorrow(liquidator, borrower, actualRepayAmount, address(clTokenCollateral), seizeTokens);
+        emit LiquidateBorrow(
+            liquidator,
+            borrower,
+            actualRepayAmount,
+            address(clTokenCollateral),
+            seizeTokens
+        );
     }
 
     /**
@@ -826,9 +887,20 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param borrower The account having collateral seized
      * @param seizeTokens The number of clTokens to seize
      */
-    function seizeInternal(address seizerToken, address liquidator, address borrower, uint seizeTokens) internal {
+    function seizeInternal(
+        address seizerToken,
+        address liquidator,
+        address borrower,
+        uint seizeTokens
+    ) internal {
         /* Fail if seize not allowed */
-        uint allowed = comptroller.seizeAllowed(address(this), seizerToken, liquidator, borrower, seizeTokens);
+        uint allowed = comptroller.seizeAllowed(
+            address(this),
+            seizerToken,
+            liquidator,
+            borrower,
+            seizeTokens
+        );
         if (allowed != 0) {
             revert LiquidateSeizeComptrollerRejection(allowed);
         }
@@ -948,7 +1020,9 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @dev Admin function to accrue interest and set a new reserve factor
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setReserveFactor(uint newReserveFactorMantissa) external override nonReentrant returns (uint) {
+    function _setReserveFactor(
+        uint newReserveFactorMantissa
+    ) external override nonReentrant returns (uint) {
         accrueInterest();
         // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
         return _setReserveFactorFresh(newReserveFactorMantissa);
@@ -1103,7 +1177,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param newInterestRateModel the new interest rate model to use
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setInterestRateModel(InterestRateModel newInterestRateModel) public override returns (uint) {
+    function _setInterestRateModel(address newInterestRateModel) public override returns (uint) {
         accrueInterest();
         // _setInterestRateModelFresh emits interest-rate-model-update-specific logs on errors, so we don't need to.
         return _setInterestRateModelFresh(newInterestRateModel);
@@ -1115,9 +1189,9 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param newInterestRateModel the new interest rate model to use
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setInterestRateModelFresh(InterestRateModel newInterestRateModel) internal returns (uint) {
+    function _setInterestRateModelFresh(address newInterestRateModel) internal returns (uint) {
         // Used to store old model for use in the event that is emitted on success
-        InterestRateModel oldInterestRateModel;
+        address oldInterestRateModel;
 
         // Check caller is admin
         if (msg.sender != admin) {
@@ -1133,7 +1207,9 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         oldInterestRateModel = interestRateModel;
 
         // Ensure invoke newInterestRateModel.isInterestRateModel() returns true
-        require(newInterestRateModel.isInterestRateModel(), "marker method returned false");
+        if (!IInterestRateModel(newInterestRateModel).isInterestRateModel()) {
+            revert InvalidInterestRateModel();
+        }
 
         // Set the interest rate model to newInterestRateModel
         interestRateModel = newInterestRateModel;

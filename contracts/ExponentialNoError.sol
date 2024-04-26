@@ -44,7 +44,11 @@ contract ExponentialNoError {
     /**
      * @dev Multiply an Exp by a scalar, truncate, then add an to an unsigned integer, returning an unsigned integer.
      */
-    function mul_ScalarTruncateAddUInt(Exp memory a, uint scalar, uint addend) internal pure returns (uint) {
+    function mul_ScalarTruncateAddUInt(
+        Exp memory a,
+        uint scalar,
+        uint addend
+    ) internal pure returns (uint) {
         Exp memory product = mul_(a, scalar);
         return add_(truncate(product), addend);
     }

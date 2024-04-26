@@ -32,15 +32,37 @@ abstract contract ComptrollerInterface {
 
     /*** Policy Hooks ***/
 
-    function mintAllowed(address clToken, address minter, uint mintAmount) external virtual returns (uint);
+    function mintAllowed(
+        address clToken,
+        address minter,
+        uint mintAmount
+    ) external virtual returns (uint);
 
-    function mintVerify(address clToken, address minter, uint mintAmount, uint mintTokens) external virtual;
+    function mintVerify(
+        address clToken,
+        address minter,
+        uint mintAmount,
+        uint mintTokens
+    ) external virtual;
 
-    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) external virtual returns (uint);
+    function redeemAllowed(
+        address clToken,
+        address redeemer,
+        uint redeemTokens
+    ) external virtual returns (uint);
 
-    function redeemVerify(address clToken, address redeemer, uint redeemAmount, uint redeemTokens) external virtual;
+    function redeemVerify(
+        address clToken,
+        address redeemer,
+        uint redeemAmount,
+        uint redeemTokens
+    ) external virtual;
 
-    function borrowAllowed(address clToken, address borrower, uint borrowAmount) external virtual returns (uint);
+    function borrowAllowed(
+        address clToken,
+        address borrower,
+        uint borrowAmount
+    ) external virtual returns (uint);
 
     function borrowVerify(address clToken, address borrower, uint borrowAmount) external virtual;
 
@@ -99,7 +121,12 @@ abstract contract ComptrollerInterface {
         uint transferTokens
     ) external virtual returns (uint);
 
-    function transferVerify(address clToken, address src, address dst, uint transferTokens) external virtual;
+    function transferVerify(
+        address clToken,
+        address src,
+        address dst,
+        uint transferTokens
+    ) external virtual;
 
     /*** Liquidity/Liquidation Calculations ***/
 
