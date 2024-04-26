@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./ComptrollerInterface.sol";
-import "./InterestRateModel.sol";
+import "../interfaces/IInterestRateModel.sol";
 import "../ErrorReporter.sol";
 import "../interfaces/EIP20NonStandardInterface.sol";
 
@@ -58,7 +58,7 @@ contract ClTokenStorage {
     /**
      * @notice Model which tells what the current interest rate should be
      */
-    InterestRateModel public interestRateModel;
+    address public interestRateModel;
 
     // Initial exchange rate used when minting the first clTokens (used when totalSupply = 0)
     uint internal initialExchangeRateMantissa;
@@ -129,7 +129,12 @@ abstract contract ClTokenInterface is ClTokenStorage {
     /**
      * @notice Event emitted when interest is accrued
      */
-    event AccrueInterest(uint cashPrior, uint interestAccumulated, uint borrowIndex, uint totalBorrows);
+    event AccrueInterest(
+        uint cashPrior,
+        uint interestAccumulated,
+        uint borrowIndex,
+        uint totalBorrows
+    );
 
     /**
      * @notice Event emitted when tokens are minted
@@ -149,7 +154,13 @@ abstract contract ClTokenInterface is ClTokenStorage {
     /**
      * @notice Event emitted when a borrow is repaid
      */
-    event RepayBorrow(address payer, address borrower, uint repayAmount, uint accountBorrows, uint totalBorrows);
+    event RepayBorrow(
+        address payer,
+        address borrower,
+        uint repayAmount,
+        uint accountBorrows,
+        uint totalBorrows
+    );
 
     /**
      * @notice Event emitted when a borrow is liquidated
@@ -182,7 +193,7 @@ abstract contract ClTokenInterface is ClTokenStorage {
     /**
      * @notice Event emitted when interestRateModel is changed
      */
-    event NewMarketInterestRateModel(InterestRateModel oldInterestRateModel, InterestRateModel newInterestRateModel);
+    event NewMarketInterestRateModel(address oldInterestRateModel, address newInterestRateModel);
 
     /**
      * @notice Event emitted when the reserve factor is changed
@@ -217,7 +228,9 @@ abstract contract ClTokenInterface is ClTokenStorage {
     function allowance(address owner, address spender) external view virtual returns (uint);
     function balanceOf(address owner) external view virtual returns (uint);
     function balanceOfUnderlying(address owner) external virtual returns (uint);
-    function getAccountSnapshot(address account) external view virtual returns (uint, uint, uint, uint);
+    function getAccountSnapshot(
+        address account
+    ) external view virtual returns (uint, uint, uint, uint);
     function borrowRatePerBlock() external view virtual returns (uint);
     function supplyRatePerBlock() external view virtual returns (uint);
     function totalBorrowsCurrent() external virtual returns (uint);
@@ -227,7 +240,11 @@ abstract contract ClTokenInterface is ClTokenStorage {
     function exchangeRateStored() external view virtual returns (uint);
     function getCash() external view virtual returns (uint);
     function accrueInterest() external virtual returns (uint);
-    function seize(address liquidator, address borrower, uint seizeTokens) external virtual returns (uint);
+    function seize(
+        address liquidator,
+        address borrower,
+        uint seizeTokens
+    ) external virtual returns (uint);
 
     /*** Admin Functions ***/
 
@@ -236,7 +253,7 @@ abstract contract ClTokenInterface is ClTokenStorage {
     function _setComptroller(ComptrollerInterface newComptroller) external virtual returns (uint);
     function _setReserveFactor(uint newReserveFactorMantissa) external virtual returns (uint);
     function _reduceReserves(uint reduceAmount) external virtual returns (uint);
-    function _setInterestRateModel(InterestRateModel newInterestRateModel) external virtual returns (uint);
+    function _setInterestRateModel(address newInterestRateModel) external virtual returns (uint);
 }
 
 contract ClErc20Storage {

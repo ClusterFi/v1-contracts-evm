@@ -22,14 +22,21 @@ contract ClErc20 is ClToken, ClErc20Interface {
     function initialize(
         address underlying_,
         ComptrollerInterface comptroller_,
-        InterestRateModel interestRateModel_,
+        address interestRateModel_,
         uint initialExchangeRateMantissa_,
         string memory name_,
         string memory symbol_,
         uint8 decimals_
     ) public {
         // ClToken initialize does the bulk of the work
-        super.initialize(comptroller_, interestRateModel_, initialExchangeRateMantissa_, name_, symbol_, decimals_);
+        super.initialize(
+            comptroller_,
+            interestRateModel_,
+            initialExchangeRateMantissa_,
+            name_,
+            symbol_,
+            decimals_
+        );
 
         // Set underlying and sanity check it
         underlying = underlying_;
@@ -97,7 +104,10 @@ contract ClErc20 is ClToken, ClErc20Interface {
      * @param repayAmount The amount to repay, or -1 for the full outstanding amount
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function repayBorrowBehalf(address borrower, uint repayAmount) external override returns (uint) {
+    function repayBorrowBehalf(
+        address borrower,
+        uint repayAmount
+    ) external override returns (uint) {
         repayBorrowBehalfInternal(borrower, repayAmount);
         return NO_ERROR;
     }

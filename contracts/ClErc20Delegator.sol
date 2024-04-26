@@ -27,7 +27,7 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
     constructor(
         address underlying_,
         ComptrollerInterface comptroller_,
-        InterestRateModel interestRateModel_,
+        IInterestRateModel interestRateModel_,
         uint initialExchangeRateMantissa_,
         string memory name_,
         string memory symbol_,
@@ -83,7 +83,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
         address oldImplementation = implementation;
         implementation = implementation_;
 
-        delegateToImplementation(abi.encodeWithSignature("_becomeImplementation(bytes)", becomeImplementationData));
+        delegateToImplementation(
+            abi.encodeWithSignature("_becomeImplementation(bytes)", becomeImplementationData)
+        );
 
         emit NewImplementation(oldImplementation, implementation);
     }
@@ -95,7 +97,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function mint(uint mintAmount) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("mint(uint256)", mintAmount));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("mint(uint256)", mintAmount)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -106,7 +110,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function redeem(uint redeemTokens) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("redeem(uint256)", redeemTokens));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("redeem(uint256)", redeemTokens)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -129,7 +135,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function borrow(uint borrowAmount) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("borrow(uint256)", borrowAmount));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("borrow(uint256)", borrowAmount)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -139,7 +147,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function repayBorrow(uint repayAmount) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("repayBorrow(uint256)", repayAmount));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("repayBorrow(uint256)", repayAmount)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -149,7 +159,10 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @param repayAmount The amount to repay, or -1 for the full outstanding amount
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function repayBorrowBehalf(address borrower, uint repayAmount) external override returns (uint) {
+    function repayBorrowBehalf(
+        address borrower,
+        uint repayAmount
+    ) external override returns (uint) {
         bytes memory data = delegateToImplementation(
             abi.encodeWithSignature("repayBorrowBehalf(address,uint256)", borrower, repayAmount)
         );
@@ -187,7 +200,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return Whether or not the transfer succeeded
      */
     function transfer(address dst, uint amount) external override returns (bool) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("transfer(address,uint256)", dst, amount));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("transfer(address,uint256)", dst, amount)
+        );
         return abi.decode(data, (bool));
     }
 
@@ -198,7 +213,11 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @param amount The number of tokens to transfer
      * @return Whether or not the transfer succeeded
      */
-    function transferFrom(address src, address dst, uint256 amount) external override returns (bool) {
+    function transferFrom(
+        address src,
+        address dst,
+        uint256 amount
+    ) external override returns (bool) {
         bytes memory data = delegateToImplementation(
             abi.encodeWithSignature("transferFrom(address,address,uint256)", src, dst, amount)
         );
@@ -239,7 +258,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return The number of tokens owned by `owner`
      */
     function balanceOf(address owner) external view override returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("balanceOf(address)", owner));
+        bytes memory data = delegateToViewImplementation(
+            abi.encodeWithSignature("balanceOf(address)", owner)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -250,7 +271,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return The amount of underlying owned by `owner`
      */
     function balanceOfUnderlying(address owner) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("balanceOfUnderlying(address)", owner));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("balanceOfUnderlying(address)", owner)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -260,7 +283,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @param account Address of the account to snapshot
      * @return (possible error, token balance, borrow balance, exchange rate mantissa)
      */
-    function getAccountSnapshot(address account) external view override returns (uint, uint, uint, uint) {
+    function getAccountSnapshot(
+        address account
+    ) external view override returns (uint, uint, uint, uint) {
         bytes memory data = delegateToViewImplementation(
             abi.encodeWithSignature("getAccountSnapshot(address)", account)
         );
@@ -272,7 +297,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return The borrow interest rate per block, scaled by 1e18
      */
     function borrowRatePerBlock() external view override returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("borrowRatePerBlock()"));
+        bytes memory data = delegateToViewImplementation(
+            abi.encodeWithSignature("borrowRatePerBlock()")
+        );
         return abi.decode(data, (uint));
     }
 
@@ -281,7 +308,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return The supply interest rate per block, scaled by 1e18
      */
     function supplyRatePerBlock() external view override returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("supplyRatePerBlock()"));
+        bytes memory data = delegateToViewImplementation(
+            abi.encodeWithSignature("supplyRatePerBlock()")
+        );
         return abi.decode(data, (uint));
     }
 
@@ -290,7 +319,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return The total borrows with interest
      */
     function totalBorrowsCurrent() external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("totalBorrowsCurrent()"));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("totalBorrowsCurrent()")
+        );
         return abi.decode(data, (uint));
     }
 
@@ -301,7 +332,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return The calculated balance
      */
     function borrowBalanceCurrent(address account) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("borrowBalanceCurrent(address)", account));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("borrowBalanceCurrent(address)", account)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -322,7 +355,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return Calculated exchange rate scaled by 1e18
      */
     function exchangeRateCurrent() public override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("exchangeRateCurrent()"));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("exchangeRateCurrent()")
+        );
         return abi.decode(data, (uint));
     }
 
@@ -332,7 +367,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return Calculated exchange rate scaled by 1e18
      */
     function exchangeRateStored() public view override returns (uint) {
-        bytes memory data = delegateToViewImplementation(abi.encodeWithSignature("exchangeRateStored()"));
+        bytes memory data = delegateToViewImplementation(
+            abi.encodeWithSignature("exchangeRateStored()")
+        );
         return abi.decode(data, (uint));
     }
 
@@ -364,9 +401,18 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @param seizeTokens The number of clTokens to seize
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function seize(address liquidator, address borrower, uint seizeTokens) external override returns (uint) {
+    function seize(
+        address liquidator,
+        address borrower,
+        uint seizeTokens
+    ) external override returns (uint) {
         bytes memory data = delegateToImplementation(
-            abi.encodeWithSignature("seize(address,address,uint256)", liquidator, borrower, seizeTokens)
+            abi.encodeWithSignature(
+                "seize(address,address,uint256)",
+                liquidator,
+                borrower,
+                seizeTokens
+            )
         );
         return abi.decode(data, (uint));
     }
@@ -436,7 +482,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function _addReserves(uint addAmount) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("_addReserves(uint256)", addAmount));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("_addReserves(uint256)", addAmount)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -446,7 +494,9 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function _reduceReserves(uint reduceAmount) external override returns (uint) {
-        bytes memory data = delegateToImplementation(abi.encodeWithSignature("_reduceReserves(uint256)", reduceAmount));
+        bytes memory data = delegateToImplementation(
+            abi.encodeWithSignature("_reduceReserves(uint256)", reduceAmount)
+        );
         return abi.decode(data, (uint));
     }
 
@@ -456,7 +506,7 @@ contract ClErc20Delegator is ClTokenInterface, ClErc20Interface, ClDelegatorInte
      * @param newInterestRateModel the new interest rate model to use
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setInterestRateModel(InterestRateModel newInterestRateModel) public override returns (uint) {
+    function _setInterestRateModel(address newInterestRateModel) public override returns (uint) {
         bytes memory data = delegateToImplementation(
             abi.encodeWithSignature("_setInterestRateModel(address)", newInterestRateModel)
         );
