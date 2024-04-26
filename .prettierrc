@@ -2,13 +2,13 @@
     "plugins": ["prettier-plugin-solidity"],
     "trailingComma": "all",
     "arrowParens": "avoid",
-    "printWidth": 120,
+    "printWidth": 100,
     "tabWidth": 4,
     "overrides": [
       {
         "files": "*.sol",
         "options": {
-          "printWidth": 120,
+          "printWidth": 100,
           "bracketSpacing": true
         }
       }
