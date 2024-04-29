@@ -36,8 +36,8 @@ contract WhitePaperInterestRateModel is IInterestRateModel {
      * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by BASE)
      */
     constructor(uint256 baseRatePerYear, uint256 multiplierPerYear) {
-        baseRatePerBlock = baseRatePerYear / blocksPerYear;
-        multiplierPerBlock = multiplierPerYear / blocksPerYear;
+        baseRatePerBlock = baseRatePerYear * BASE / blocksPerYear / BASE;
+        multiplierPerBlock = multiplierPerYear * BASE / blocksPerYear / BASE;
 
         emit NewInterestParams(baseRatePerBlock, multiplierPerBlock, 0, 0);
     }

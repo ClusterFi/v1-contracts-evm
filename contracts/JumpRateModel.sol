@@ -66,8 +66,8 @@ contract JumpRateModel is IInterestRateModel {
         address owner_
     ) {
         owner = owner_;
-        baseRatePerBlock = baseRatePerYear.div(blocksPerYear);
-        multiplierPerBlock = (multiplierPerYear.mul(BASE)).div(blocksPerYear.mul(kink_));
+        baseRatePerBlock = baseRatePerYear.mul(BASE).div(blocksPerYear).div(BASE);
+        multiplierPerBlock = multiplierPerYear.mul(BASE).div(blocksPerYear).div(BASE);
         jumpMultiplierPerBlock = jumpMultiplierPerYear.div(blocksPerYear);
         kink = kink_;
 
