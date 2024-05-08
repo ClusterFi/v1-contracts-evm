@@ -5,7 +5,8 @@ import {
     ClErc20Delegate,
     ClErc20Delegator,
     Comptroller,
-    JumpRateModel
+    JumpRateModel,
+    WstETHMock
 } from "../typechain-types";
 
 describe("ClToken", function () {
@@ -15,6 +16,7 @@ describe("ClToken", function () {
     let clErc20Delegate: ClErc20Delegate;
     let comptroller: Comptroller;
     let jumpRateModel: JumpRateModel;
+    let underlyingToken: WstETHMock;
 
     const baseRatePerYear = ethers.parseEther("0.1");
     const multiplierPerYear = ethers.parseEther("0.45");
@@ -30,7 +32,7 @@ describe("ClToken", function () {
         [deployer, account1] = await ethers.getSigners();
         
         const stETHMock = await ethers.deployContract("StETHMock");
-        const underlyingToken = await ethers.deployContract("WstETHMock", [
+        underlyingToken = await ethers.deployContract("WstETHMock", [
             await stETHMock.getAddress()
         ]);
 
@@ -58,6 +60,9 @@ describe("ClToken", function () {
             await clErc20Delegate.getAddress(),
             "0x"
         ]);
+
+        // Mints underlying asset to Admin
+        underlyingToken.mint(deployer.address, ethers.parseEther("10"));
     });
 
     context("Deployment", () => {
@@ -103,7 +108,9 @@ describe("ClToken", function () {
                         account1.address
                     );
 
-                await expect(setPendingAdminTx).to.be.reverted;
+                await expect(setPendingAdminTx).to.be.revertedWithCustomError(
+                    clErc20Delegate, "SetPendingAdminOwnerCheck"
+                );
             });
 
             it("Should be able to set if caller is admin", async () => {
@@ -129,7 +136,9 @@ describe("ClToken", function () {
                         await comptroller.getAddress()
                     );
 
-                await expect(setComptrollerTx).to.be.reverted;
+                await expect(setComptrollerTx).to.be.revertedWithCustomError(
+                    clErc20Delegate, "SetComptrollerOwnerCheck"
+                );
             });
 
             it("Should be able to set if caller is admin", async () => {
@@ -157,7 +166,9 @@ describe("ClToken", function () {
                         newReserveFactorMantissa
                     );
 
-                await expect(setReserveFactorTx).to.be.reverted;
+                await expect(setReserveFactorTx).to.be.revertedWithCustomError(
+                    clErc20Delegate, "SetReserveFactorAdminCheck"
+                );
             });
 
             it("Should be able to set if caller is admin", async () => {
@@ -184,7 +195,9 @@ describe("ClToken", function () {
                         await jumpRateModel.getAddress()
                     );
 
-                await expect(setIrmTx).to.be.reverted;
+                await expect(setIrmTx).to.be.revertedWithCustomError(
+                    clErc20Delegate, "SetInterestRateModelOwnerCheck"
+                );
             });
 
             it("Should be able to set if caller is admin", async () => {
@@ -216,7 +229,9 @@ describe("ClToken", function () {
                     .connect(deployer)
                     ._acceptAdmin();
 
-                await expect(acceptAdminTx).to.be.reverted;
+                await expect(acceptAdminTx).to.be.revertedWithCustomError(
+                    clErc20Delegate, "AcceptAdminPendingAdminCheck"
+                );
             });
 
             it("Should be able to accept if caller is pendingAdmin", async () => {
@@ -229,6 +244,66 @@ describe("ClToken", function () {
                 await expect(acceptAdminTx).to.emit(
                     clErc20Delegator, "NewAdmin"
                 ).withArgs(oldAdmin, account1.address);
+            });
+        });
+
+        context("Add Reserves", () => {
+            const amountToAdd = ethers.WeiPerEther;
+            beforeEach(async () => {
+                // Approve
+                await underlyingToken.approve(clErc20Delegator, amountToAdd);
+            });
+
+            it("Should be able to add reserves", async () => {
+                const totalReserves = await clErc20Delegator.totalReserves();
+                const totalReservesNew = totalReserves + amountToAdd;
+
+                const addReservesTx = clErc20Delegator
+                    .connect(deployer)
+                    ._addReserves(
+                        amountToAdd
+                    );
+
+                await expect(addReservesTx).to.emit(
+                    clErc20Delegator, "ReservesAdded"
+                ).withArgs(deployer.address, amountToAdd, totalReservesNew);
+            });
+        });
+
+        context("Reduce Reserves", () => {
+            const amount = ethers.WeiPerEther;
+            beforeEach(async () => {
+                await underlyingToken.approve(clErc20Delegator, amount);
+                await clErc20Delegator.connect(deployer)._addReserves(
+                    amount
+                );
+            });
+
+            it("Should revert if caller is not admin", async () => {
+                const reduceReservesTx = clErc20Delegator
+                    .connect(account1)
+                    ._reduceReserves(
+                        amount
+                    );
+
+                await expect(reduceReservesTx).to.revertedWithCustomError(
+                    clErc20Delegate, "ReduceReservesAdminCheck"
+                );
+            });
+
+            it("Should be able to reduce reserves", async () => {
+                const totalReserves = await clErc20Delegator.totalReserves();
+                const totalReservesNew = totalReserves - amount;
+
+                const reduceReservesTx = clErc20Delegator
+                    .connect(deployer)
+                    ._reduceReserves(
+                        amount
+                    );
+
+                await expect(reduceReservesTx).to.emit(
+                    clErc20Delegator, "ReservesReduced"
+                ).withArgs(deployer.address, amount, totalReservesNew);
             });
         });
     });
