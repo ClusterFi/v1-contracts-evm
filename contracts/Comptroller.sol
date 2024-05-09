@@ -1016,7 +1016,7 @@ contract Comptroller is
         // Verify market is listed
         Market storage market = markets[address(clToken)];
         if (!market.isListed) {
-            return fail(Error.MARKET_NOT_LISTED, FailureInfo.SET_COLLATERAL_FACTOR_NO_EXISTS);
+            revert MarketIsNotListed();
         }
 
         Exp memory newCollateralFactorExp = Exp({ mantissa: newCollateralFactorMantissa });
@@ -1080,11 +1080,11 @@ contract Comptroller is
      */
     function _supportMarket(ClToken clToken) external returns (uint) {
         if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SUPPORT_MARKET_OWNER_CHECK);
+            revert NotAdmin();
         }
 
         if (markets[address(clToken)].isListed) {
-            return fail(Error.MARKET_ALREADY_LISTED, FailureInfo.SUPPORT_MARKET_EXISTS);
+            revert MarketIsAlreadyListed();
         }
 
         clToken.isClToken(); // Sanity check to make sure its really a ClToken

@@ -15,6 +15,7 @@ abstract contract ComptrollerInterface {
     error NotAdminOrBorrowCapGuardian();
     error ArrayLengthMismatch();
     error MarketIsNotListed();
+    error MarketIsAlreadyListed();
     error NotAdminOrPauseGuardian();
     error NotUnitrollerAdmin();
     error ChangeNotAuthorized();
