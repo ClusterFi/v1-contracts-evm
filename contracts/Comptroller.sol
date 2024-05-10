@@ -1270,9 +1270,7 @@ contract Comptroller is
         if (msg.sender != unitroller.admin()) {
             revert NotUnitrollerAdmin();
         }
-        if (unitroller._acceptImplementation() != 0) {
-            revert ChangeNotAuthorized();
-        }
+        unitroller.acceptImplementation();
     }
 
     /**

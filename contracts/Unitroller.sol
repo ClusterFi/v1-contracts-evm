@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
-import "./ErrorReporter.sol";
-import "./ComptrollerStorage.sol";
+import { UnitrollerAdminStorage } from "./ComptrollerStorage.sol";
 
 /**
  * @title ComptrollerCore
- * @dev Storage for the comptroller is at this address, while execution is delegated to the `comptrollerImplementation`.
+ * @dev Storage for the comptroller is at this address, while execution is delegated to
+ * the `comptrollerImplementation`. 
  * ClTokens should reference this contract as their comptroller.
  */
-contract Unitroller is UnitrollerAdminStorage, ComptrollerErrorReporter {
+contract Unitroller is UnitrollerAdminStorage {
     /**
      * @notice Emitted when pendingComptrollerImplementation is updated
      */
@@ -34,104 +34,88 @@ contract Unitroller is UnitrollerAdminStorage, ComptrollerErrorReporter {
      */
     event NewAdmin(address oldAdmin, address newAdmin);
 
+    error ZeroAddress();
+    error NotAdmin();
+    error NotPendingAdmin();
+    error NotPendingImplementation();
+    
     constructor() {
         // Set admin to caller
         admin = msg.sender;
     }
 
-    function _setPendingImplementation(address newPendingImplementation) public returns (uint) {
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_PENDING_IMPLEMENTATION_OWNER_CHECK);
-        }
+    function setPendingImplementation(address _newPendingImplementation) public {
+        // check if caller is admin
+        if (msg.sender != admin) revert NotAdmin();
+        // check if new implementation is not zero address
+        if (_newPendingImplementation == address(0)) revert ZeroAddress();
 
         address oldPendingImplementation = pendingComptrollerImplementation;
 
-        pendingComptrollerImplementation = newPendingImplementation;
+        pendingComptrollerImplementation = _newPendingImplementation;
 
         emit NewPendingImplementation(oldPendingImplementation, pendingComptrollerImplementation);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
      * @notice Accepts new implementation of comptroller. msg.sender must be pendingImplementation
      * @dev Admin function for new implementation to accept it's role as implementation
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _acceptImplementation() public returns (uint) {
-        // Check caller is pendingImplementation and pendingImplementation ≠ address(0)
-        if (
-            msg.sender != pendingComptrollerImplementation ||
-            pendingComptrollerImplementation == address(0)
-        ) {
-            return
-                fail(Error.UNAUTHORIZED, FailureInfo.ACCEPT_PENDING_IMPLEMENTATION_ADDRESS_CHECK);
-        }
+    function acceptImplementation() public {
+        // Check if caller is pendingImplementation
+        if (msg.sender != pendingComptrollerImplementation) revert NotPendingImplementation();
+        // check if pendingImplementation is not zero address
+        if (pendingComptrollerImplementation == address(0)) revert ZeroAddress();
 
         // Save current values for inclusion in log
-        address oldImplementation = comptrollerImplementation;
-        address oldPendingImplementation = pendingComptrollerImplementation;
+        address _oldImplementation = comptrollerImplementation;
+        address _oldPendingImplementation = pendingComptrollerImplementation;
 
         comptrollerImplementation = pendingComptrollerImplementation;
 
         pendingComptrollerImplementation = address(0);
 
-        emit NewImplementation(oldImplementation, comptrollerImplementation);
-        emit NewPendingImplementation(oldPendingImplementation, pendingComptrollerImplementation);
-
-        return uint(Error.NO_ERROR);
+        emit NewImplementation(_oldImplementation, comptrollerImplementation);
+        emit NewPendingImplementation(_oldPendingImplementation, pendingComptrollerImplementation);
     }
 
     /**
-     * @notice Begins transfer of admin rights. The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
-     * @dev Admin function to begin change of admin.
-     * The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
-     * @param newPendingAdmin New pending admin.
-     * @return uint 0 = success, otherwise a failure (see ErrorReporter.sol for details)
+     * @notice Admin function to begin change of admin.
+     * @dev Begins transfer of admin rights. The newPendingAdmin must call `acceptAdmin` to
+     * finalize the transfer.
+     * @param _newPendingAdmin New pending admin.
      */
-    function _setPendingAdmin(address newPendingAdmin) public returns (uint) {
-        // Check caller = admin
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_PENDING_ADMIN_OWNER_CHECK);
-        }
+    function setPendingAdmin(address _newPendingAdmin) public {
+        // Check if caller is admin
+        if (msg.sender != admin) revert NotAdmin();
 
-        // Save current value, if any, for inclusion in log
-        address oldPendingAdmin = pendingAdmin;
+        address _oldPendingAdmin = pendingAdmin;
 
-        // Store pendingAdmin with value newPendingAdmin
-        pendingAdmin = newPendingAdmin;
+        pendingAdmin = _newPendingAdmin;
 
-        // Emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin)
-        emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin);
-
-        return uint(Error.NO_ERROR);
+        emit NewPendingAdmin(_oldPendingAdmin, _newPendingAdmin);
     }
 
     /**
      * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
      * @dev Admin function for pending admin to accept role and update admin
-     * @return uint 0 = success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _acceptAdmin() public returns (uint) {
-        // Check caller is pendingAdmin and pendingAdmin ≠ address(0)
-        if (msg.sender != pendingAdmin || msg.sender == address(0)) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.ACCEPT_ADMIN_PENDING_ADMIN_CHECK);
-        }
+    function acceptAdmin() public {
+        // Check if caller is pendingImplementation
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        // check if pendingAdmin is not zero address
+        if (pendingAdmin == address(0)) revert ZeroAddress();
 
-        // Save current values for inclusion in log
-        address oldAdmin = admin;
-        address oldPendingAdmin = pendingAdmin;
+        address _oldAdmin = admin;
+        address _oldPendingAdmin = pendingAdmin;
 
-        // Store admin with value pendingAdmin
         admin = pendingAdmin;
 
         // Clear the pending value
         pendingAdmin = address(0);
 
-        emit NewAdmin(oldAdmin, admin);
-        emit NewPendingAdmin(oldPendingAdmin, pendingAdmin);
-
-        return uint(Error.NO_ERROR);
+        emit NewAdmin(_oldAdmin, admin);
+        emit NewPendingAdmin(_oldPendingAdmin, pendingAdmin);
     }
 
     /**
