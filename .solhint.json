@@ -11,6 +11,7 @@
     "max-states-count": ["off", 15],
     "gas-custom-errors": "off",
     "reason-string": ["off", { "maxLength":32 }],
-    "func-visibility": ["error", { "ignoreConstructors": true }]
+    "func-visibility": ["error", { "ignoreConstructors": true }],
+    "no-complex-fallback": "off"
   }
 }
