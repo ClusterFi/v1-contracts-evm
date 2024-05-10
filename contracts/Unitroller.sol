@@ -64,8 +64,6 @@ contract Unitroller is UnitrollerAdminStorage {
     function acceptImplementation() public {
         // Check if caller is pendingImplementation
         if (msg.sender != pendingComptrollerImplementation) revert NotPendingImplementation();
-        // check if pendingImplementation is not zero address
-        if (pendingComptrollerImplementation == address(0)) revert ZeroAddress();
 
         // Save current values for inclusion in log
         address _oldImplementation = comptrollerImplementation;
@@ -88,6 +86,8 @@ contract Unitroller is UnitrollerAdminStorage {
     function setPendingAdmin(address _newPendingAdmin) public {
         // Check if caller is admin
         if (msg.sender != admin) revert NotAdmin();
+        // check if new admin is not zero address
+        if (_newPendingAdmin == address(0)) revert ZeroAddress();
 
         address _oldPendingAdmin = pendingAdmin;
 
@@ -103,8 +103,6 @@ contract Unitroller is UnitrollerAdminStorage {
     function acceptAdmin() public {
         // Check if caller is pendingImplementation
         if (msg.sender != pendingAdmin) revert NotPendingAdmin();
-        // check if pendingAdmin is not zero address
-        if (pendingAdmin == address(0)) revert ZeroAddress();
 
         address _oldAdmin = admin;
         address _oldPendingAdmin = pendingAdmin;
