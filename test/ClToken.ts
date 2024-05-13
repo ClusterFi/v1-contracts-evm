@@ -100,6 +100,39 @@ describe("ClToken", function () {
     });
 
     context("Admin Functions", () => {
+        context("Set implementation", () => {
+            it("Should revert if caller is not admin", async () => {
+                const setImplementationTx = clErc20Delegator
+                    .connect(account1)
+                    ._setImplementation(
+                        await clErc20Delegate.getAddress(),
+                        false,
+                        "0x"
+                    );
+
+                await expect(setImplementationTx).to.be.revertedWithCustomError(
+                    clErc20Delegator, "NotAdmin"
+                );
+            });
+
+            it("Should be able to set new implementation", async () => {
+                const oldImplementation = await clErc20Delegate.getAddress();
+                const newImplementation = oldImplementation;
+
+                const setImplementationTx = clErc20Delegator
+                    .connect(deployer)
+                    ._setImplementation(
+                        await clErc20Delegate.getAddress(),
+                        true,
+                        "0x"
+                    );
+
+                await expect(setImplementationTx).to.emit(
+                    clErc20Delegator, "NewImplementation"
+                ).withArgs(oldImplementation, newImplementation);
+            });
+        });
+
         context("Set pendingAdmin", () => {
             it("Should revert if caller is not admin", async () => {
                 const setPendingAdminTx = clErc20Delegator
