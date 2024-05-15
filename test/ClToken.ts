@@ -112,7 +112,7 @@ describe("ClToken", function () {
             it("Should revert if caller is not admin", async () => {
                 const setImplementationTx = clErc20Delegator
                     .connect(account1)
-                    ._setImplementation(
+                    .setImplementation(
                         await clErc20Delegate.getAddress(),
                         false,
                         "0x"
@@ -129,7 +129,7 @@ describe("ClToken", function () {
 
                 const setImplementationTx = clErc20Delegator
                     .connect(deployer)
-                    ._setImplementation(
+                    .setImplementation(
                         await clErc20Delegate.getAddress(),
                         true,
                         "0x"
@@ -145,7 +145,7 @@ describe("ClToken", function () {
             it("Should revert if caller is not admin", async () => {
                 const setPendingAdminTx = clErc20Delegator
                     .connect(account1)
-                    ._setPendingAdmin(
+                    .setPendingAdmin(
                         account1.address
                     );
 
@@ -159,7 +159,7 @@ describe("ClToken", function () {
 
                 const setPendingAdminTx = clErc20Delegator
                     .connect(deployer)
-                    ._setPendingAdmin(
+                    .setPendingAdmin(
                         account1.address
                     );
 
@@ -173,7 +173,7 @@ describe("ClToken", function () {
             it("Should revert if caller is not admin", async () => {
                 const setComptrollerTx = clErc20Delegator
                     .connect(account1)
-                    ._setComptroller(
+                    .setComptroller(
                         await unitroller.getAddress()
                     );
 
@@ -188,7 +188,7 @@ describe("ClToken", function () {
 
                 const setComptrollerTx = clErc20Delegator
                     .connect(deployer)
-                    ._setComptroller(
+                    .setComptroller(
                         await unitroller.getAddress()
                     );
 
@@ -203,7 +203,7 @@ describe("ClToken", function () {
                 const newReserveFactorMantissa = ethers.WeiPerEther;
                 const setReserveFactorTx = clErc20Delegator
                     .connect(account1)
-                    ._setReserveFactor(
+                    .setReserveFactor(
                         newReserveFactorMantissa
                     );
 
@@ -218,7 +218,7 @@ describe("ClToken", function () {
 
                 const setReserveFactorTx = clErc20Delegator
                     .connect(deployer)
-                    ._setReserveFactor(
+                    .setReserveFactor(
                         newReserveFactorMantissa
                     );
 
@@ -232,7 +232,7 @@ describe("ClToken", function () {
             it("Should revert if caller is not admin", async () => {
                 const setIrmTx = clErc20Delegator
                     .connect(account1)
-                    ._setInterestRateModel(
+                    .setInterestRateModel(
                         await jumpRateModel.getAddress()
                     );
 
@@ -247,7 +247,7 @@ describe("ClToken", function () {
 
                 const setIrmTx = clErc20Delegator
                     .connect(deployer)
-                    ._setInterestRateModel(
+                    .setInterestRateModel(
                         await jumpRateModel.getAddress()
                     );
 
@@ -260,7 +260,7 @@ describe("ClToken", function () {
         context("Accept New Admin", () => {
             beforeEach(async () => {
                 // first set PendingAdmin
-                await clErc20Delegator.connect(deployer)._setPendingAdmin(
+                await clErc20Delegator.connect(deployer).setPendingAdmin(
                     account1.address
                 );
             });
@@ -268,7 +268,7 @@ describe("ClToken", function () {
             it("Should revert if caller is not pendingAdmin", async () => {
                 const acceptAdminTx = clErc20Delegator
                     .connect(deployer)
-                    ._acceptAdmin();
+                    .acceptAdmin();
 
                 await expect(acceptAdminTx).to.be.revertedWithCustomError(
                     clErc20Delegate, "AcceptAdminPendingAdminCheck"
@@ -280,7 +280,7 @@ describe("ClToken", function () {
                 // First set PendingAdmin
                 const acceptAdminTx = clErc20Delegator
                     .connect(account1)
-                    ._acceptAdmin();
+                    .acceptAdmin();
 
                 await expect(acceptAdminTx).to.emit(
                     clErc20Delegator, "NewAdmin"
@@ -301,7 +301,7 @@ describe("ClToken", function () {
 
                 const addReservesTx = clErc20Delegator
                     .connect(deployer)
-                    ._addReserves(
+                    .addReserves(
                         amountToAdd
                     );
 
@@ -315,7 +315,7 @@ describe("ClToken", function () {
             const amount = ethers.WeiPerEther;
             beforeEach(async () => {
                 await underlyingToken.approve(clErc20Delegator, amount);
-                await clErc20Delegator.connect(deployer)._addReserves(
+                await clErc20Delegator.connect(deployer).addReserves(
                     amount
                 );
             });
@@ -323,7 +323,7 @@ describe("ClToken", function () {
             it("Should revert if caller is not admin", async () => {
                 const reduceReservesTx = clErc20Delegator
                     .connect(account1)
-                    ._reduceReserves(
+                    .reduceReserves(
                         amount
                     );
 
@@ -338,7 +338,7 @@ describe("ClToken", function () {
 
                 const reduceReservesTx = clErc20Delegator
                     .connect(deployer)
-                    ._reduceReserves(
+                    .reduceReserves(
                         amount
                     );
 
