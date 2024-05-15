@@ -6,6 +6,7 @@ import {
     ClErc20Delegator,
     Comptroller,
     JumpRateModel,
+    Unitroller,
     WstETHMock
 } from "../typechain-types";
 
@@ -14,6 +15,7 @@ describe("ClToken", function () {
     
     let clErc20Delegator: ClErc20Delegator;
     let clErc20Delegate: ClErc20Delegate;
+    let unitroller: Unitroller;
     let comptroller: Comptroller;
     let jumpRateModel: JumpRateModel;
     let underlyingToken: WstETHMock;
@@ -37,6 +39,12 @@ describe("ClToken", function () {
         ]);
 
         comptroller = await ethers.deployContract("Comptroller");
+        unitroller = await ethers.deployContract("Unitroller");
+        // set pending comptroller implementation in Unitroller and accept it in Comptroller.
+        // only after that, we can pass unitroller into ClErc20Delegator initialize().
+        await unitroller.setPendingImplementation(await comptroller.getAddress());
+        await comptroller._become(await unitroller.getAddress());
+
         jumpRateModel = await ethers.deployContract("JumpRateModel", [
             baseRatePerYear,
             multiplierPerYear,
@@ -50,7 +58,7 @@ describe("ClToken", function () {
         // ClErc20Delegator contract instance
         clErc20Delegator = await ethers.deployContract("ClErc20Delegator", [
             await underlyingToken.getAddress(),
-            await comptroller.getAddress(),
+            await unitroller.getAddress(),
             await jumpRateModel.getAddress(),
             initialExchangeRate,
             name,
@@ -91,7 +99,7 @@ describe("ClToken", function () {
         });
 
         it("Should return correct comptroller address", async () => {
-            expect(await clErc20Delegator.comptroller()).to.equal(await comptroller.getAddress());
+            expect(await clErc20Delegator.comptroller()).to.equal(await unitroller.getAddress());
         });
 
         it("Should return correct implementation address", async () => {
@@ -166,7 +174,7 @@ describe("ClToken", function () {
                 const setComptrollerTx = clErc20Delegator
                     .connect(account1)
                     ._setComptroller(
-                        await comptroller.getAddress()
+                        await unitroller.getAddress()
                     );
 
                 await expect(setComptrollerTx).to.be.revertedWithCustomError(
@@ -181,7 +189,7 @@ describe("ClToken", function () {
                 const setComptrollerTx = clErc20Delegator
                     .connect(deployer)
                     ._setComptroller(
-                        await comptroller.getAddress()
+                        await unitroller.getAddress()
                     );
 
                 await expect(setComptrollerTx).to.emit(
