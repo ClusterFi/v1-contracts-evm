@@ -11,7 +11,8 @@ import "../ExponentialNoError.sol";
 /**
  * @title Cluster's ClToken Contract
  * @notice Abstract base for ClTokens
- * @author Cluster
+ * @author Modified from Compound CToken
+ * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/CToken.sol)
  */
 abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorReporter {
     /**
@@ -42,7 +43,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         );
 
         // Set the comptroller
-        uint err = _setComptroller(comptroller_);
+        uint err = setComptroller(comptroller_);
         require(err == NO_ERROR, "setting comptroller failed");
 
         // Initialize block number and borrow index (block number mocks depend on comptroller being set)
@@ -943,10 +944,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @notice Begins transfer of admin rights. The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
      * @dev Admin function to begin change of admin. The newPendingAdmin must call `_acceptAdmin`
      * to finalize the transfer.
-     * @param newPendingAdmin New pending admin.
+     * @param _newPendingAdmin New pending admin.
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setPendingAdmin(address payable newPendingAdmin) external override returns (uint) {
+    function setPendingAdmin(address payable _newPendingAdmin) external override returns (uint) {
         // Check caller = admin
         if (msg.sender != admin) {
             revert SetPendingAdminOwnerCheck();
@@ -956,10 +957,10 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         address oldPendingAdmin = pendingAdmin;
 
         // Store pendingAdmin with value newPendingAdmin
-        pendingAdmin = newPendingAdmin;
+        pendingAdmin = _newPendingAdmin;
 
         // Emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin)
-        emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin);
+        emit NewPendingAdmin(oldPendingAdmin, _newPendingAdmin);
 
         return NO_ERROR;
     }
@@ -969,7 +970,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @dev Admin function for pending admin to accept role and update admin
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _acceptAdmin() external override returns (uint) {
+    function acceptAdmin() external override returns (uint) {
         // Check caller is pendingAdmin and pendingAdmin ≠ address(0)
         if (msg.sender != pendingAdmin || msg.sender == address(0)) {
             revert AcceptAdminPendingAdminCheck();
@@ -996,7 +997,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @dev Admin function to set a new comptroller
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setComptroller(ComptrollerInterface newComptroller) public override returns (uint) {
+    function setComptroller(ComptrollerInterface _newComptroller) public override returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
             revert SetComptrollerOwnerCheck();
@@ -1004,13 +1005,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
 
         ComptrollerInterface oldComptroller = comptroller;
         // Ensure invoke comptroller.isComptroller() returns true
-        require(newComptroller.isComptroller(), "marker method returned false");
+        require(_newComptroller.isComptroller(), "marker method returned false");
 
         // Set market's comptroller to newComptroller
-        comptroller = newComptroller;
+        comptroller = _newComptroller;
 
-        // Emit NewComptroller(oldComptroller, newComptroller)
-        emit NewComptroller(oldComptroller, newComptroller);
+        emit NewComptroller(oldComptroller, _newComptroller);
 
         return NO_ERROR;
     }
@@ -1020,12 +1020,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @dev Admin function to accrue interest and set a new reserve factor
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setReserveFactor(
-        uint newReserveFactorMantissa
+    function setReserveFactor(
+        uint _newReserveFactorMantissa
     ) external override nonReentrant returns (uint) {
         accrueInterest();
         // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
-        return _setReserveFactorFresh(newReserveFactorMantissa);
+        return _setReserveFactorFresh(_newReserveFactorMantissa);
     }
 
     /**
@@ -1118,7 +1118,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param reduceAmount Amount of reduction to reserves
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _reduceReserves(uint reduceAmount) external override nonReentrant returns (uint) {
+    function reduceReserves(uint reduceAmount) external override nonReentrant returns (uint) {
         accrueInterest();
         // _reduceReservesFresh emits reserve-reduction-specific logs on errors, so we don't need to.
         return _reduceReservesFresh(reduceAmount);
@@ -1174,13 +1174,13 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     /**
      * @notice accrues interest and updates the interest rate model using _setInterestRateModelFresh
      * @dev Admin function to accrue interest and update the interest rate model
-     * @param newInterestRateModel the new interest rate model to use
+     * @param _newInterestRateModel the new interest rate model to use
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setInterestRateModel(address newInterestRateModel) public override returns (uint) {
+    function setInterestRateModel(address _newInterestRateModel) external override returns (uint) {
         accrueInterest();
         // _setInterestRateModelFresh emits interest-rate-model-update-specific logs on errors, so we don't need to.
-        return _setInterestRateModelFresh(newInterestRateModel);
+        return _setInterestRateModelFresh(_newInterestRateModel);
     }
 
     /**

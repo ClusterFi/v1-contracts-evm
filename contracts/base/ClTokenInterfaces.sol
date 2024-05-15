@@ -248,12 +248,12 @@ abstract contract ClTokenInterface is ClTokenStorage {
 
     /*** Admin Functions ***/
 
-    function _setPendingAdmin(address payable newPendingAdmin) external virtual returns (uint);
-    function _acceptAdmin() external virtual returns (uint);
-    function _setComptroller(ComptrollerInterface newComptroller) external virtual returns (uint);
-    function _setReserveFactor(uint newReserveFactorMantissa) external virtual returns (uint);
-    function _reduceReserves(uint reduceAmount) external virtual returns (uint);
-    function _setInterestRateModel(address newInterestRateModel) external virtual returns (uint);
+    function setPendingAdmin(address payable _newPendingAdmin) external virtual returns (uint);
+    function acceptAdmin() external virtual returns (uint);
+    function setComptroller(ComptrollerInterface _newComptroller) external virtual returns (uint);
+    function setReserveFactor(uint _newReserveFactorMantissa) external virtual returns (uint);
+    function reduceReserves(uint _reduceAmount) external virtual returns (uint);
+    function setInterestRateModel(address _newInterestRateModel) external virtual returns (uint);
 }
 
 contract ClErc20Storage {
@@ -266,22 +266,22 @@ contract ClErc20Storage {
 abstract contract ClErc20Interface is ClErc20Storage {
     /*** User Interface ***/
 
-    function mint(uint mintAmount) external virtual returns (uint);
-    function redeem(uint redeemTokens) external virtual returns (uint);
-    function redeemUnderlying(uint redeemAmount) external virtual returns (uint);
-    function borrow(uint borrowAmount) external virtual returns (uint);
-    function repayBorrow(uint repayAmount) external virtual returns (uint);
-    function repayBorrowBehalf(address borrower, uint repayAmount) external virtual returns (uint);
+    function mint(uint _mintAmount) external virtual returns (uint);
+    function redeem(uint _redeemTokens) external virtual returns (uint);
+    function redeemUnderlying(uint _redeemAmount) external virtual returns (uint);
+    function borrow(uint _borrowAmount) external virtual returns (uint);
+    function repayBorrow(uint _repayAmount) external virtual returns (uint);
+    function repayBorrowBehalf(address _borrower, uint _repayAmount) external virtual returns (uint);
     function liquidateBorrow(
-        address borrower,
-        uint repayAmount,
-        ClTokenInterface clTokenCollateral
+        address _borrower,
+        uint _repayAmount,
+        ClTokenInterface _clTokenCollateral
     ) external virtual returns (uint);
-    function sweepToken(EIP20NonStandardInterface token) external virtual;
+    function sweepToken(EIP20NonStandardInterface _token) external virtual;
 
     /*** Admin Functions ***/
 
-    function _addReserves(uint addAmount) external virtual returns (uint);
+    function addReserves(uint _addAmount) external virtual returns (uint);
 }
 
 contract ClDelegationStorage {
@@ -293,20 +293,20 @@ contract ClDelegationStorage {
 
 abstract contract ClDelegatorInterface is ClDelegationStorage {
     /**
-     * @notice Emitted when implementation is changed
+     * @notice Emitted when implementation is updated.
      */
-    event NewImplementation(address oldImplementation, address newImplementation);
+    event NewImplementation(address _oldImplementation, address _newImplementation);
 
     /**
      * @notice Called by the admin to update the implementation of the delegator
-     * @param implementation_ The address of the new implementation for delegation
-     * @param allowResign Flag to indicate whether to call _resignImplementation on the old implementation
-     * @param becomeImplementationData The encoded bytes data to be passed to _becomeImplementation
+     * @param _implementation The address of the new implementation for delegation
+     * @param _allowResign Flag to indicate whether to call resignImplementation on the old implementation
+     * @param _becomeImplementationData The encoded bytes data to be passed to _becomeImplementation
      */
-    function _setImplementation(
-        address implementation_,
-        bool allowResign,
-        bytes memory becomeImplementationData
+    function setImplementation(
+        address _implementation,
+        bool _allowResign,
+        bytes memory _becomeImplementationData
     ) external virtual;
 }
 
@@ -316,10 +316,10 @@ abstract contract ClDelegateInterface is ClDelegationStorage {
      * @dev Should revert if any issues arise which make it unfit for delegation
      * @param data The encoded bytes data for any initialization
      */
-    function _becomeImplementation(bytes memory data) external virtual;
+    function becomeImplementation(bytes memory data) external virtual;
 
     /**
      * @notice Called by the delegator on a delegate to forfeit its responsibility
      */
-    function _resignImplementation() external virtual;
+    function resignImplementation() external virtual;
 }
