@@ -45,7 +45,9 @@ describe("ClToken", function () {
         await unitroller.setPendingImplementation(await comptroller.getAddress());
         await comptroller._become(await unitroller.getAddress());
 
+        const blocksPerYear = 2102400n;
         jumpRateModel = await ethers.deployContract("JumpRateModel", [
+            blocksPerYear,
             baseRatePerYear,
             multiplierPerYear,
             jumpMultiplierPerYear,

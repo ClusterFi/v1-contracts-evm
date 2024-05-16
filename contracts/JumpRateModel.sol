@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 import "./interfaces/IInterestRateModel.sol";
 import "./libraries/SafeMath.sol";
 
 /**
- * @title Cluster's JumpRateModel Contract
+ * @title JumpRateModel Contract
  * @author Cluster
- * @notice Jump rate model contract that automatically adjusts the interest rate based on the utilization rate.
- * This is a modified version of the Compound JumpRateModelV2 contract
- * https://github.com/compound-finance/compound-protocol/blob/master/contracts/JumpRateModelV2.sol
+ * @notice Automatically adjusts the interest rate based on the utilization rate.
+ * Modified from the Compound JumpRateModelV2 contract.
+ * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/JumpRateModelV2.sol)
  */
-contract JumpRateModel is IInterestRateModel {
+contract JumpRateModel is IInterestRateModel, Ownable {
     using SafeMath for uint256;
 
     /// @notice Indicator that this is an InterestRateModel contract (for inspection)
@@ -22,7 +24,7 @@ contract JumpRateModel is IInterestRateModel {
     /**
      * @notice The approximate number of blocks per year that is assumed by the interest rate model
      */
-    uint256 public constant blocksPerYear = 2102400;
+    uint256 public blocksPerYear;
 
     /**
      * @notice The multiplier of utilization rate that gives the slope of the interest rate
@@ -45,33 +47,59 @@ contract JumpRateModel is IInterestRateModel {
     uint256 public kink;
 
     /**
-     * @notice The address of the owner, i.e. the Timelock contract, which can update parameters directly
-     */
-    address public owner;
-
-    /**
      * @notice Construct an interest rate model
+     * @param blocksPerYear_ The approximate number of blocks per year
      * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by BASE)
      * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by BASE)
      * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
      * @param kink_ The utilization point at which the jump multiplier is applied
-     * @param owner_ The address of the owner, i.e. the Timelock contract
+     * @param initialOwner The address of the initial owner
      * (which has the ability to update parameters directly)
      */
     constructor(
+        uint256 blocksPerYear_,
         uint256 baseRatePerYear,
         uint256 multiplierPerYear,
         uint256 jumpMultiplierPerYear,
         uint256 kink_,
-        address owner_
-    ) {
-        owner = owner_;
-        baseRatePerBlock = baseRatePerYear.mul(BASE).div(blocksPerYear).div(BASE);
-        multiplierPerBlock = multiplierPerYear.mul(BASE).div(blocksPerYear).div(BASE);
-        jumpMultiplierPerBlock = jumpMultiplierPerYear.div(blocksPerYear);
-        kink = kink_;
+        address initialOwner
+    ) Ownable(initialOwner) {
+        blocksPerYear = blocksPerYear_;
+        _updateJumpRateModel(
+            baseRatePerYear,
+            multiplierPerYear,
+            jumpMultiplierPerYear,
+            kink_
+        );
+    }
 
-        emit NewInterestParams(baseRatePerBlock, multiplierPerBlock, jumpMultiplierPerBlock, kink);
+    /**
+     * @notice Updates the `blocksPerYear` to make interest calculations more correct
+     * @param blocksPerYear_ The new estimated eth blocks per year
+     */
+    function updateBlocksPerYear(uint256 blocksPerYear_) external onlyOwner {
+        blocksPerYear = blocksPerYear_;
+    }
+
+    /**
+     * @notice Update the parameters of the interest rate model (only callable by owner)
+     * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by 1e18)
+     * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by 1e18)
+     * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
+     * @param kink_ The utilization point at which the jump multiplier is applied
+     */
+    function updateJumpRateModel(
+        uint256 baseRatePerYear,
+        uint256 multiplierPerYear,
+        uint256 jumpMultiplierPerYear,
+        uint256 kink_
+    ) external onlyOwner {
+        _updateJumpRateModel(
+            baseRatePerYear,
+            multiplierPerYear,
+            jumpMultiplierPerYear,
+            kink_
+        );
     }
 
     /**
@@ -135,5 +163,31 @@ contract JumpRateModel is IInterestRateModel {
         uint256 borrowRate = getBorrowRate(cash, borrows, reserves);
         uint256 rateToPool = borrowRate.mul(oneMinusReserveFactor).div(BASE);
         return utilizationRate(cash, borrows, reserves).mul(rateToPool).div(BASE);
+    }
+    
+    /**
+     * @notice Internal function to update the parameters of the interest rate model
+     * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by BASE)
+     * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by BASE)
+     * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
+     * @param kink_ The utilization point at which the jump multiplier is applied
+     */
+    function _updateJumpRateModel(
+        uint256 baseRatePerYear,
+        uint256 multiplierPerYear,
+        uint256 jumpMultiplierPerYear,
+        uint256 kink_
+    ) internal {
+        baseRatePerBlock = baseRatePerYear.div(blocksPerYear);
+        multiplierPerBlock = (multiplierPerYear.mul(BASE)).div(blocksPerYear.mul(kink_));
+        jumpMultiplierPerBlock = jumpMultiplierPerYear.div(blocksPerYear);
+        kink = kink_;
+
+        emit NewInterestParams(
+            baseRatePerBlock,
+            multiplierPerBlock,
+            jumpMultiplierPerBlock,
+            kink
+        );
     }
 }

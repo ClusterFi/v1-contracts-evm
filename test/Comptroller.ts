@@ -26,7 +26,10 @@ describe("Comptroller", function () {
         const underlyingToken = await ethers.deployContract("WstETHMock", [
             await stETHMock.getAddress()
         ]);
+
+        const blocksPerYear = 2102400n;
         const jumpRateModel = await ethers.deployContract("JumpRateModel", [
+            blocksPerYear,
             baseRatePerYear,
             multiplierPerYear,
             jumpMultiplierPerYear,

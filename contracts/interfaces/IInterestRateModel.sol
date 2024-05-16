@@ -2,13 +2,12 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title Cluster's InterestRateModel interface
+ * @title InterestRateModel Interface
  * @author Cluster
- * @notice An abstract interest rate model contract with no functions that defines an interface
- * for all interest rate models.
+ * @notice Defines a basic interface for all interest rate models.
  * This contract is used by the JumpRateModel contract.
- * This is a modified version of the Compound InterestRateModel abstract
- * https://github.com/compound-finance/compound-protocol/blob/master/contracts/InterestRateModel.sol
+ * Modified from the Compound InterestRateModel abstract
+ * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/InterestRateModel.sol)
  */
 interface IInterestRateModel {
     event NewInterestParams(
@@ -25,7 +24,7 @@ interface IInterestRateModel {
      * @param cash The total amount of cash the market has
      * @param borrows The total amount of borrows the market has outstanding
      * @param reserves The total amount of reserves the market has
-     * @return The borrow rate per block (as a percentage, and scaled by BASE)
+     * @return The borrow rate per block (as a percentage, and scaled by 1e18)
      */
     function getBorrowRate(
         uint256 cash,
@@ -39,7 +38,7 @@ interface IInterestRateModel {
      * @param borrows The total amount of borrows the market has outstanding
      * @param reserves The total amount of reserves the market has
      * @param reserveFactorMantissa The current reserve factor the market has
-     * @return The supply rate per block (as a percentage, and scaled by BASE)
+     * @return The supply rate per block (as a percentage, and scaled by 1e18)
      */
     function getSupplyRate(
         uint256 cash,
