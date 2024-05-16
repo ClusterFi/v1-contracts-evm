@@ -17,10 +17,10 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
-      chainId: 1337,
       forking: {
         enabled: true,
         url: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_KEY_MAINNET}`,
+        blockNumber: 19879247
       }
     },
     sepolia: {
