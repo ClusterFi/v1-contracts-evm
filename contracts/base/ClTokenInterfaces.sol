@@ -271,7 +271,10 @@ abstract contract ClErc20Interface is ClErc20Storage {
     function redeemUnderlying(uint _redeemAmount) external virtual returns (uint);
     function borrow(uint _borrowAmount) external virtual returns (uint);
     function repayBorrow(uint _repayAmount) external virtual returns (uint);
-    function repayBorrowBehalf(address _borrower, uint _repayAmount) external virtual returns (uint);
+    function repayBorrowBehalf(
+        address _borrower,
+        uint _repayAmount
+    ) external virtual returns (uint);
     function liquidateBorrow(
         address _borrower,
         uint _repayAmount,

@@ -6,7 +6,7 @@ import { UnitrollerAdminStorage } from "./ComptrollerStorage.sol";
 /**
  * @title Comptroller Proxy
  * @dev Storage for the comptroller is at this address, while execution is delegated to
- * the `comptrollerImplementation`. 
+ * the `comptrollerImplementation`.
  * NOTE: ClTokens should reference this contract as their comptroller.
  * @author Modified from Compound V2 Unitroller.
  * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/Unitroller.sol)
@@ -40,7 +40,7 @@ contract Unitroller is UnitrollerAdminStorage {
     error NotAdmin();
     error NotPendingAdmin();
     error NotPendingImplementation();
-    
+
     constructor() {
         // Set admin to caller
         admin = msg.sender;

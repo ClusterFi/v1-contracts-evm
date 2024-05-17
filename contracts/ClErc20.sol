@@ -136,7 +136,10 @@ contract ClErc20 is ClToken, ClErc20Interface {
      */
     function sweepToken(EIP20NonStandardInterface _token) external override {
         require(msg.sender == admin, "CErc20::sweepToken: only admin can sweep tokens");
-        require(address(_token) != underlying, "CErc20::sweepToken: can not sweep underlying token");
+        require(
+            address(_token) != underlying,
+            "CErc20::sweepToken: can not sweep underlying token"
+        );
         uint256 balance = _token.balanceOf(address(this));
         _token.transfer(admin, balance);
     }
