@@ -15,9 +15,6 @@ contract PriceOracle is IPriceOracle, Ownable {
     /// @notice Indicator that this is a PriceOracle contract (for inspection)
     bool public constant isPriceOracle = true;
 
-    /// @notice Administrator for this contract
-    address public admin;
-
     /// @notice overridden prices for assets, not used if unset
     mapping(address => uint256) internal prices;
 
@@ -26,55 +23,6 @@ contract PriceOracle is IPriceOracle, Ownable {
     mapping(bytes32 => AggregatorV3Interface) internal feeds;
 
     constructor() Ownable(msg.sender) {}
-
-    /// @notice Get the underlying price of a listed clToken asset
-    /// @param _clErc20 The clToken to get the underlying price of
-    /// @return The underlying asset price mantissa scaled by 1e18
-    function getUnderlyingPrice(IClErc20 _clErc20) public view override returns (uint256) {
-        return getPrice(_clErc20);
-    }
-
-    /// @notice Get the underlying price of a token
-    /// @param _clErc20 The clToken to get the underlying price of
-    /// @return price The underlying asset price mantissa scaled by 1e18
-    /// @dev if the admin sets the price override, this function will
-    /// return that instead of the chainlink price
-    function getPrice(IClErc20 _clErc20) internal view returns (uint256 price) {
-        IERC20Metadata token = IERC20Metadata(IClErc20(address(_clErc20)).underlying());
-
-        if (prices[address(token)] != 0) {
-            price = prices[address(token)];
-        } else {
-            price = getChainlinkPrice(getFeed(token.symbol()));
-        }
-
-        uint256 decimalDelta = uint256(18) - uint256(token.decimals());
-        // Ensure that we don't multiply the result by 0
-        if (decimalDelta > 0) {
-            return price * (10 ** decimalDelta);
-        } else {
-            return price;
-        }
-    }
-
-    /// @notice Gets the price of a token from Chainlink price feed
-    /// @param _feed The Chainlink feed to get the price
-    /// @return The price of the asset from Chainlink scaled by 1e18
-    function getChainlinkPrice(AggregatorV3Interface _feed) internal view returns (uint256) {
-        (, int256 answer, , uint256 updatedAt, ) = AggregatorV3Interface(_feed).latestRoundData();
-
-        if (answer == 0) revert InvalidAnswer();
-        if (updatedAt == 0) revert InvalidUpdatedAt();
-
-        // Chainlink USD-denominated feeds store answers at 8 decimals
-        uint256 decimalDelta = uint256(18) - _feed.decimals();
-        // Ensure that we don't multiply the result by 0
-        if (decimalDelta > 0) {
-            return uint256(answer) * (10 ** decimalDelta);
-        } else {
-            return uint256(answer);
-        }
-    }
 
     /// @notice Sets the price of an asset overriding the value returned from Chainlink
     /// @param _clErc20 The clErc20 to set the price of
@@ -110,6 +58,13 @@ contract PriceOracle is IPriceOracle, Ownable {
         emit FeedSet(_feed, _symbol);
     }
 
+    /// @notice Get the underlying price of a listed clToken asset
+    /// @param _clErc20 The clToken to get the underlying price of
+    /// @return The underlying asset price mantissa scaled by 1e18
+    function getUnderlyingPrice(IClErc20 _clErc20) public view override returns (uint256) {
+        return _getPrice(_clErc20);
+    }
+
     /// @notice Gets the chainlink feed for a given token symbol
     /// @param _symbol The symbol of the clErc20's underlying token to get the feed for
     /// @return The address of the chainlink feed
@@ -122,5 +77,47 @@ contract PriceOracle is IPriceOracle, Ownable {
     /// @return The price of the asset scaled by 1e18
     function assetPrices(address _asset) external view returns (uint256) {
         return prices[_asset];
+    }
+
+    /// @notice Get the underlying price of a token
+    /// @param _clErc20 The clToken to get the underlying price of
+    /// @return price The underlying asset price mantissa scaled by 1e18
+    /// @dev if the owner sets the price override, this function will
+    /// return that instead of the chainlink price
+    function _getPrice(IClErc20 _clErc20) internal view returns (uint256 price) {
+        IERC20Metadata token = IERC20Metadata(IClErc20(address(_clErc20)).underlying());
+
+        if (prices[address(token)] != 0) {
+            price = prices[address(token)];
+        } else {
+            price = _getChainlinkPrice(getFeed(token.symbol()));
+        }
+
+        uint256 decimalDelta = uint256(18) - uint256(token.decimals());
+        // Ensure that we don't multiply the result by 0
+        if (decimalDelta > 0) {
+            return price * (10 ** decimalDelta);
+        } else {
+            return price;
+        }
+    }
+
+    /// @notice Gets the price of a token from Chainlink price feed
+    /// @param _feed The Chainlink feed to get the price
+    /// @return The price of the asset from Chainlink scaled by 1e18
+    function _getChainlinkPrice(AggregatorV3Interface _feed) internal view returns (uint256) {
+        (, int256 answer, , uint256 updatedAt, ) = AggregatorV3Interface(_feed).latestRoundData();
+
+        if (answer == 0) revert InvalidAnswer();
+        if (updatedAt == 0) revert InvalidUpdatedAt();
+
+        // Chainlink USD-denominated feeds store answers at 8 decimals
+        uint256 decimalDelta = uint256(18) - _feed.decimals();
+        // Ensure that we don't multiply the result by 0
+        if (decimalDelta > 0) {
+            return uint256(answer) * (10 ** decimalDelta);
+        } else {
+            return uint256(answer);
+        }
     }
 }
