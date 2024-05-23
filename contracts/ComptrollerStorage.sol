@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "./tokens/ClToken.sol";
-import "./base/PriceOracle.sol";
 
 contract UnitrollerAdminStorage {
     /**
@@ -30,7 +29,7 @@ contract ComptrollerV1Storage is UnitrollerAdminStorage {
     /**
      * @notice Oracle which gives the price of any given asset
      */
-    PriceOracle public oracle;
+    address public oracle;
 
     /**
      * @notice Multiplier used to calculate the maximum repayAmount when liquidating a borrow

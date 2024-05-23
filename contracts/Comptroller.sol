@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
+import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import "./tokens/ClToken.sol";
 import "./tokens/Cluster.sol";
-import "./base/PriceOracle.sol";
 import "./base/ComptrollerInterface.sol";
 import "./ErrorReporter.sol";
 import "./ComptrollerStorage.sol";
@@ -45,7 +45,7 @@ contract Comptroller is
     );
 
     /// @notice Emitted when price oracle is updated
-    event NewPriceOracle(PriceOracle oldPriceOracle, PriceOracle newPriceOracle);
+    event NewPriceOracle(address oldPriceOracle, address newPriceOracle);
 
     /// @notice Emitted when pause guardian is updated
     event NewPauseGuardian(address oldPauseGuardian, address newPauseGuardian);
@@ -421,7 +421,7 @@ contract Comptroller is
             assert(markets[clToken].accountMembership[borrower]);
         }
 
-        if (oracle.getUnderlyingPrice(ClToken(clToken)) == 0) {
+        if (IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clToken)) == 0) {
             return uint(Error.PRICE_ERROR);
         }
 
@@ -852,7 +852,7 @@ contract Comptroller is
             vars.exchangeRate = Exp({ mantissa: vars.exchangeRateMantissa });
 
             // Get the normalized price of the asset
-            vars.oraclePriceMantissa = oracle.getUnderlyingPrice(asset);
+            vars.oraclePriceMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(address(asset)));
             if (vars.oraclePriceMantissa == 0) {
                 return (Error.PRICE_ERROR, 0, 0);
             }
@@ -920,8 +920,8 @@ contract Comptroller is
         uint actualRepayAmount
     ) external view override returns (uint, uint) {
         /* Read oracle prices for borrowed and collateral markets */
-        uint priceBorrowedMantissa = oracle.getUnderlyingPrice(ClToken(clTokenBorrowed));
-        uint priceCollateralMantissa = oracle.getUnderlyingPrice(ClToken(clTokenCollateral));
+        uint priceBorrowedMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clTokenBorrowed));
+        uint priceCollateralMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clTokenCollateral));
         if (priceBorrowedMantissa == 0 || priceCollateralMantissa == 0) {
             return (uint(Error.PRICE_ERROR), 0);
         }
@@ -960,20 +960,20 @@ contract Comptroller is
      * @dev Admin function to set a new price oracle
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setPriceOracle(PriceOracle newOracle) public returns (uint) {
+    function _setPriceOracle(address _newOracle) public returns (uint) {
         // Check caller is admin
         if (msg.sender != admin) {
             return fail(Error.UNAUTHORIZED, FailureInfo.SET_PRICE_ORACLE_OWNER_CHECK);
         }
 
         // Track the old oracle for the comptroller
-        PriceOracle oldOracle = oracle;
+        address oldOracle = oracle;
 
         // Set comptroller's oracle to newOracle
-        oracle = newOracle;
+        oracle = _newOracle;
 
         // Emit NewPriceOracle(oldOracle, newOracle)
-        emit NewPriceOracle(oldOracle, newOracle);
+        emit NewPriceOracle(oldOracle, _newOracle);
 
         return uint(Error.NO_ERROR);
     }
@@ -1029,7 +1029,9 @@ contract Comptroller is
         }
 
         // If collateral factor != 0, fail if price == 0
-        if (newCollateralFactorMantissa != 0 && oracle.getUnderlyingPrice(clToken) == 0) {
+        if (newCollateralFactorMantissa != 0
+            && IPriceOracle(oracle).getUnderlyingPrice(IClErc20(address(clToken))) == 0
+        ) {
             return fail(Error.PRICE_ERROR, FailureInfo.SET_COLLATERAL_FACTOR_WITHOUT_PRICE);
         }
 
