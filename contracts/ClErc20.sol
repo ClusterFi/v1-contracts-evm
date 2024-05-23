@@ -1,46 +1,61 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
+import { IClErc20 } from "./interfaces/IClErc20.sol";
 import "./tokens/ClToken.sol";
 
 /**
  * @title Cluster's ClErc20 Contract
  * @notice ClTokens which wrap an EIP-20 underlying
+ * @dev Modified from Compound V2 CErc20Immutable
+ * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/CErc20Immutable.sol)
  * @author Cluster
  */
-contract ClErc20 is ClToken, ClErc20Interface {
+contract ClErc20 is IClErc20, ClToken {
+    /**
+     * @notice Underlying asset for this clToken
+     */
+    address public underlying;
+
     /**
      * @notice Initialize the new money market
-     * @param underlying_ The address of the underlying asset
-     * @param comptroller_ The address of the Comptroller
-     * @param interestRateModel_ The address of the interest rate model
-     * @param initialExchangeRateMantissa_ The initial exchange rate, scaled by 1e18
-     * @param name_ ERC-20 name of this token
-     * @param symbol_ ERC-20 symbol of this token
-     * @param decimals_ ERC-20 decimal precision of this token
+     * @param _underlying The address of the underlying asset
+     * @param _comptroller The address of the Comptroller
+     * @param _interestRateModel The address of the interest rate model
+     * @param _initialExchangeRateMantissa The initial exchange rate, scaled by 1e18
+     * @param _name ERC-20 name of this token
+     * @param _symbol ERC-20 symbol of this token
+     * @param _decimals ERC-20 decimal precision of this token
+     * @param _admin Address of the administrator of this token
      */
-    function initialize(
-        address underlying_,
-        ComptrollerInterface comptroller_,
-        address interestRateModel_,
-        uint initialExchangeRateMantissa_,
-        string memory name_,
-        string memory symbol_,
-        uint8 decimals_
-    ) public {
+    constructor(
+        address _underlying,
+        ComptrollerInterface _comptroller,
+        address _interestRateModel,
+        uint _initialExchangeRateMantissa,
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals,
+        address payable _admin
+    ) {
+        // Creator of the contract is admin during initialization
+        admin = payable(msg.sender);
+
         // ClToken initialize does the bulk of the work
         super.initialize(
-            comptroller_,
-            interestRateModel_,
-            initialExchangeRateMantissa_,
-            name_,
-            symbol_,
-            decimals_
+            _comptroller,
+            _interestRateModel,
+            _initialExchangeRateMantissa,
+            _name,
+            _symbol,
+            _decimals
         );
 
         // Set underlying and sanity check it
-        underlying = underlying_;
+        underlying = _underlying;
         EIP20Interface(underlying).totalSupply();
+
+        admin = _admin;
     }
 
     /*** User Interface ***/
@@ -123,7 +138,7 @@ contract ClErc20 is ClToken, ClErc20Interface {
     function liquidateBorrow(
         address _borrower,
         uint _repayAmount,
-        ClTokenInterface _clTokenCollateral
+        address _clTokenCollateral
     ) external override returns (uint) {
         liquidateBorrowInternal(_borrower, _repayAmount, _clTokenCollateral);
         return NO_ERROR;
@@ -134,14 +149,14 @@ contract ClErc20 is ClToken, ClErc20Interface {
      * Tokens are sent to admin (timelock)
      * @param _token The address of the ERC-20 token to sweep
      */
-    function sweepToken(EIP20NonStandardInterface _token) external override {
+    function sweepToken(address _token) external override {
         require(msg.sender == admin, "CErc20::sweepToken: only admin can sweep tokens");
         require(
             address(_token) != underlying,
             "CErc20::sweepToken: can not sweep underlying token"
         );
-        uint256 balance = _token.balanceOf(address(this));
-        _token.transfer(admin, balance);
+        uint256 balance = EIP20Interface(_token).balanceOf(address(this));
+        EIP20Interface(_token).transfer(admin, balance);
     }
 
     /**

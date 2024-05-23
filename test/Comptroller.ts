@@ -1,12 +1,12 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { ClErc20Delegator, Comptroller } from "../typechain-types";
+import { ClErc20, Comptroller } from "../typechain-types";
   
 describe("Comptroller", function () {
     let deployer: HardhatEthersSigner, user: HardhatEthersSigner;
     let comptroller: Comptroller;
-    let clErc20Delegator: ClErc20Delegator;
+    let clErc20: ClErc20;
 
     const baseRatePerYear = ethers.parseEther("0.1");
     const multiplierPerYear = ethers.parseEther("0.45");
@@ -21,7 +21,6 @@ describe("Comptroller", function () {
         // Comptroller contract instance
         comptroller = await ethers.deployContract("Comptroller");
 
-        // ClToken contract instance (ClErc20Delegator as proxy)
         const stETHMock = await ethers.deployContract("StETHMock");
         const underlyingToken = await ethers.deployContract("WstETHMock", [
             await stETHMock.getAddress()
@@ -37,10 +36,8 @@ describe("Comptroller", function () {
             deployer.address
         ]);
         
-        const clErc20Delegate = await ethers.deployContract("ClErc20Delegate");
-
-        // ClErc20Delegator contract instance
-        clErc20Delegator = await ethers.deployContract("ClErc20Delegator", [
+        // ClErc20 contract instance
+        clErc20 = await ethers.deployContract("ClErc20", [
             await underlyingToken.getAddress(),
             await comptroller.getAddress(),
             await jumpRateModel.getAddress(),
@@ -48,9 +45,7 @@ describe("Comptroller", function () {
             "Cluster WstETH Token",
             "clWstETH",
             8,
-            deployer.address,
-            await clErc20Delegate.getAddress(),
-            "0x"
+            deployer.address
         ]);
     });
 
@@ -78,7 +73,7 @@ describe("Comptroller", function () {
                 const supportMarketTx = comptroller
                     .connect(user)
                     ._supportMarket(
-                        await clErc20Delegator.getAddress()
+                        await clErc20.getAddress()
                     );
 
                 await expect(supportMarketTx).to.be.revertedWithCustomError(
@@ -87,7 +82,7 @@ describe("Comptroller", function () {
             });
 
             it("Should be able to list a market", async () => {
-                const marketAddr = await clErc20Delegator.getAddress();
+                const marketAddr = await clErc20.getAddress();
                 const supportMarketTx = comptroller
                     .connect(deployer)
                     ._supportMarket(
@@ -100,7 +95,7 @@ describe("Comptroller", function () {
             });
 
             it("Should revert if a market is already listed", async () => {
-                const marketAddr = await clErc20Delegator.getAddress();
+                const marketAddr = await clErc20.getAddress();
 
                 await comptroller.connect(deployer)._supportMarket(
                     marketAddr
@@ -139,7 +134,7 @@ describe("Comptroller", function () {
         context("Set collateral factor", () => {
             const newCollateralFactor = ethers.parseEther("0.8");
             it("Should revert if caller is not admin", async () => {
-                const marketAddr = await clErc20Delegator.getAddress();
+                const marketAddr = await clErc20.getAddress();
                 const setCollateralTx = comptroller
                     .connect(user)
                     ._setCollateralFactor(
@@ -152,7 +147,7 @@ describe("Comptroller", function () {
             });
 
             it("Should revert if a market is not listed", async () => {
-                const marketAddr = await clErc20Delegator.getAddress();
+                const marketAddr = await clErc20.getAddress();
                 const setCollateralTx = comptroller
                     .connect(deployer)
                     ._setCollateralFactor(
