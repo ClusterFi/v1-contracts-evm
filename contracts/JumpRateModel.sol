@@ -65,12 +65,7 @@ contract JumpRateModel is IInterestRateModel, Ownable {
         address initialOwner
     ) Ownable(initialOwner) {
         blocksPerYear = blocksPerYear_;
-        _updateJumpRateModel(
-            baseRatePerYear,
-            multiplierPerYear,
-            jumpMultiplierPerYear,
-            kink_
-        );
+        _updateJumpRateModel(baseRatePerYear, multiplierPerYear, jumpMultiplierPerYear, kink_);
     }
 
     /**
@@ -94,12 +89,7 @@ contract JumpRateModel is IInterestRateModel, Ownable {
         uint256 jumpMultiplierPerYear,
         uint256 kink_
     ) external onlyOwner {
-        _updateJumpRateModel(
-            baseRatePerYear,
-            multiplierPerYear,
-            jumpMultiplierPerYear,
-            kink_
-        );
+        _updateJumpRateModel(baseRatePerYear, multiplierPerYear, jumpMultiplierPerYear, kink_);
     }
 
     /**
@@ -164,7 +154,7 @@ contract JumpRateModel is IInterestRateModel, Ownable {
         uint256 rateToPool = borrowRate.mul(oneMinusReserveFactor).div(BASE);
         return utilizationRate(cash, borrows, reserves).mul(rateToPool).div(BASE);
     }
-    
+
     /**
      * @notice Internal function to update the parameters of the interest rate model
      * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by BASE)
@@ -183,11 +173,6 @@ contract JumpRateModel is IInterestRateModel, Ownable {
         jumpMultiplierPerBlock = jumpMultiplierPerYear.div(blocksPerYear);
         kink = kink_;
 
-        emit NewInterestParams(
-            baseRatePerBlock,
-            multiplierPerBlock,
-            jumpMultiplierPerBlock,
-            kink
-        );
+        emit NewInterestParams(baseRatePerBlock, multiplierPerBlock, jumpMultiplierPerBlock, kink);
     }
 }

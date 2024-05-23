@@ -753,11 +753,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     function liquidateBorrowInternal(
         address borrower,
         uint repayAmount,
-        ClTokenInterface clTokenCollateral
+        address clTokenCollateral
     ) internal nonReentrant {
         accrueInterest();
 
-        uint error = clTokenCollateral.accrueInterest();
+        uint error = ClTokenInterface(clTokenCollateral).accrueInterest();
         if (error != NO_ERROR) {
             // accrueInterest emits logs on errors,
             // but we still want to log the fact that an attempted liquidation failed
@@ -780,12 +780,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         address liquidator,
         address borrower,
         uint repayAmount,
-        ClTokenInterface clTokenCollateral
+        address clTokenCollateral
     ) internal {
         /* Fail if liquidate not allowed */
         uint allowed = comptroller.liquidateBorrowAllowed(
             address(this),
-            address(clTokenCollateral),
+            clTokenCollateral,
             liquidator,
             borrower,
             repayAmount
@@ -800,7 +800,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         /* Verify clTokenCollateral market's block number equals current block number */
-        if (clTokenCollateral.accrualBlockNumber() != getBlockNumber()) {
+        if (ClTokenInterface(clTokenCollateral).accrualBlockNumber() != getBlockNumber()) {
             revert LiquidateCollateralFreshnessCheck();
         }
 
@@ -829,7 +829,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         /* We calculate the number of collateral tokens that will be seized */
         (uint amountSeizeError, uint seizeTokens) = comptroller.liquidateCalculateSeizeTokens(
             address(this),
-            address(clTokenCollateral),
+            clTokenCollateral,
             actualRepayAmount
         );
         require(
@@ -838,14 +838,14 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         );
 
         /* Revert if borrower collateral token balance < seizeTokens */
-        require(clTokenCollateral.balanceOf(borrower) >= seizeTokens, "LIQUIDATE_SEIZE_TOO_MUCH");
+        require(ClTokenInterface(clTokenCollateral).balanceOf(borrower) >= seizeTokens, "LIQUIDATE_SEIZE_TOO_MUCH");
 
         // If this is also the collateral, run seizeInternal to avoid re-entrancy, otherwise make an external call
-        if (address(clTokenCollateral) == address(this)) {
+        if (clTokenCollateral == address(this)) {
             seizeInternal(address(this), liquidator, borrower, seizeTokens);
         } else {
             require(
-                clTokenCollateral.seize(liquidator, borrower, seizeTokens) == NO_ERROR,
+                ClTokenInterface(clTokenCollateral).seize(liquidator, borrower, seizeTokens) == NO_ERROR,
                 "token seizure failed"
             );
         }
@@ -855,7 +855,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
             liquidator,
             borrower,
             actualRepayAmount,
-            address(clTokenCollateral),
+            clTokenCollateral,
             seizeTokens
         );
     }
