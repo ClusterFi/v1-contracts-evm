@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import { AggregatorV3Interface } from "./interfaces/external/AggregatorV3Interface.sol";
+import { IStETH } from "./interfaces/external/IStETH.sol";
 
 /**
  * @title CompositeChainlinkOracle
@@ -45,7 +46,7 @@ contract CompositeChainlinkOracle {
     }
 
     /// @notice Get the latest price of a base/quote pair
-    /// interface for compatabililty with getChainlinkPrice function in PriceOracle.sol
+    /// interface for compatabililty with _getChainlinkPrice function in PriceOracle.sol
     function latestRoundData()
         external
         view
@@ -85,18 +86,6 @@ contract CompositeChainlinkOracle {
         );
     }
 
-    /// @notice Get the derived price of a base/quote pair with price data
-    /// @param basePrice The price of the base token
-    /// @param priceMultiplier The price of the quote token
-    /// @param scalingFactor The expected decimals of the derived price scaled up by 10 ** decimals
-    function calculatePrice(
-        int256 basePrice,
-        int256 priceMultiplier,
-        int256 scalingFactor
-    ) public pure returns (uint256) {
-        return uint256((basePrice * priceMultiplier) / scalingFactor);
-    }
-
     /// @notice Get the derived price of a base/quote pair
     /// @param baseAddress The base oracle address
     /// @param multiplierAddress The multiplier oracle address
@@ -115,13 +104,18 @@ contract CompositeChainlinkOracle {
         int256 scalingFactor = int256(10 ** uint256(expectedDecimals));
 
         int256 basePrice = getPriceAndScale(baseAddress, expectedDecimals);
-        int256 quotePrice = getPriceAndScale(
-            multiplierAddress,
-            expectedDecimals
-        );
-
+        int256 quotePrice = 0;
+        // Consider exchange rate stETH/wstETH on Ethereum mainnet.
+        if (_compareStrings(AggregatorV3Interface(baseAddress).description(), "STETH / USD")) {
+            quotePrice = int256(IStETH(multiplierAddress).getPooledEthByShares(1 ether));
+        } else {
+            quotePrice = getPriceAndScale(
+                multiplierAddress,
+                expectedDecimals
+            );
+        }
         /// both quote and base price should be scaled up to 18 decimals by now if expectedDecimals is 18
-        return calculatePrice(basePrice, quotePrice, scalingFactor);
+        return _calculatePrice(basePrice, quotePrice, scalingFactor);
     }
 
     /// @notice fetch ETH price, multiply by stETH-ETH exchange rate,
@@ -171,7 +165,7 @@ contract CompositeChainlinkOracle {
         (int256 price, uint8 actualDecimals) = getPriceAndDecimals(
             oracleAddress
         );
-        return scalePrice(price, actualDecimals, expectedDecimals);
+        return _scalePrice(price, actualDecimals, expectedDecimals);
     }
 
     /// @notice helper function to retrieve price from chainlink
@@ -196,16 +190,28 @@ contract CompositeChainlinkOracle {
         return (price, oracleDecimals); /// price always gt 0 at this point
     }
 
+    /// @notice Get the derived price of a base/quote pair with price data
+    /// @param basePrice The price of the base token
+    /// @param priceMultiplier The price of the quote token
+    /// @param scalingFactor The expected decimals of the derived price scaled up by 10 ** decimals
+    function _calculatePrice(
+        int256 basePrice,
+        int256 priceMultiplier,
+        int256 scalingFactor
+    ) internal pure returns (uint256) {
+        return uint256((basePrice * priceMultiplier) / scalingFactor);
+    }
+
     /// @notice scale price up or down to the desired amount of decimals
     /// @param price The price to scale
     /// @param priceDecimals The amount of decimals the price has
     /// @param expectedDecimals The amount of decimals the price should have
     /// @return the scaled price
-    function scalePrice(
+    function _scalePrice(
         int256 price,
         uint8 priceDecimals,
         uint8 expectedDecimals
-    ) public pure returns (int256) {
+    ) internal pure returns (int256) {
         if (priceDecimals < expectedDecimals) {
             return price * int256(10 ** uint256(expectedDecimals - priceDecimals));
         } else if (priceDecimals > expectedDecimals) {
@@ -214,5 +220,9 @@ contract CompositeChainlinkOracle {
 
         /// if priceDecimals == expectedDecimals, return price without any changes
         return price;
+    }
+
+    function _compareStrings(string memory a, string memory b) internal pure returns (bool) {
+        return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
     }
 }
