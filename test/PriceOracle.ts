@@ -2,13 +2,14 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { PriceOracle } from "../typechain-types";
-  
+
 describe("PriceOracle", function () {
     let deployer: HardhatEthersSigner, account1: HardhatEthersSigner;
     let priceOracle: PriceOracle;
 
     // USDC/USD Chainlink price feed.
     const USDC_Feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6";
+
     const USDCAddr = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
     beforeEach(async () => {
