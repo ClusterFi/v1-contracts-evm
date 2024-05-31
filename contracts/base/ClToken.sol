@@ -5,7 +5,6 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import "./ComptrollerInterface.sol";
 import "../interfaces/IClToken.sol";
 import "../interfaces/IInterestRateModel.sol";
-import "../interfaces/EIP20Interface.sol";
 import "../ErrorReporter.sol";
 import "../ExponentialNoError.sol";
 
@@ -1111,14 +1110,12 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
     /**
      * @notice Accrues interest and reduces reserves by transferring from msg.sender
      * @param addAmount Amount of addition to reserves
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _addReservesInternal(uint addAmount) internal nonReentrant returns (uint) {
+    function _addReservesInternal(uint addAmount) internal nonReentrant {
         accrueInterest();
 
         // _addReservesFresh emits reserve-addition-specific logs on errors, so we don't need to.
         _addReservesFresh(addAmount);
-        return NO_ERROR;
     }
 
     /**

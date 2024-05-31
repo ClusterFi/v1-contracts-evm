@@ -2,26 +2,37 @@
 pragma solidity ^0.8.20;
 
 interface IClErc20 {
+    /*** Errors ***/
+
+    error CanNotSweepUnderlyingToken();
+
     /*** View Functions ***/
+
     function underlying() external view returns (address);
 
     /*** User Functions ***/
-    function mint(uint _mintAmount) external returns (uint);
-    function redeem(uint _redeemTokens) external returns (uint);
-    function redeemUnderlying(uint _redeemAmount) external returns (uint);
-    function borrow(uint _borrowAmount) external returns (uint);
-    function repayBorrow(uint _repayAmount) external returns (uint);
-    function repayBorrowBehalf(
-        address _borrower,
-        uint _repayAmount
-    ) external returns (uint);
+
+    function mint(uint _mintAmount) external;
+
+    function redeem(uint _redeemTokens) external;
+
+    function redeemUnderlying(uint _redeemAmount) external;
+
+    function borrow(uint _borrowAmount) external;
+
+    function repayBorrow(uint _repayAmount) external;
+
+    function repayBorrowBehalf(address _borrower, uint _repayAmount) external;
+
     function liquidateBorrow(
         address _borrower,
         uint _repayAmount,
         address _clTokenCollateral
-    ) external returns (uint);
+    ) external;
+
     function sweepToken(address _token) external;
 
     /*** Admin Functions ***/
-    function addReserves(uint _addAmount) external returns (uint);
+
+    function addReserves(uint _addAmount) external;
 }
