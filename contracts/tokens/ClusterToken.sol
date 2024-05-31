@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract Cluster {
+contract ClusterToken {
     /// @notice EIP-20 token name for this token
     string public constant name = "Cluster";
 

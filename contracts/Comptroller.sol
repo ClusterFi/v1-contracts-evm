@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
-import "./tokens/ClToken.sol";
-import "./tokens/Cluster.sol";
+import "./base/ClToken.sol";
+import "./tokens/ClusterToken.sol";
 import "./base/ComptrollerInterface.sol";
 import "./ErrorReporter.sol";
 import "./ComptrollerStorage.sol";
@@ -1537,7 +1537,7 @@ contract Comptroller is
      * @return The amount of CLR which was NOT transferred to the user
      */
     function grantClrInternal(address user, uint amount) internal returns (uint) {
-        Cluster clr = Cluster(clrAddress);
+        ClusterToken clr = ClusterToken(clrAddress);
         uint clrRemaining = clr.balanceOf(address(this));
         if (amount > 0 && amount <= clrRemaining) {
             clr.transfer(user, amount);

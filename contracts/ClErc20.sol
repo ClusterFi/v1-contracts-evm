@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
+import { IERC20, SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IClErc20 } from "./interfaces/IClErc20.sol";
-import "./tokens/ClToken.sol";
+import "./base/ClToken.sol";
 
 /**
  * @title Cluster's ClErc20 Contract
@@ -12,6 +13,8 @@ import "./tokens/ClToken.sol";
  * @author Cluster
  */
 contract ClErc20 is IClErc20, ClToken {
+    using SafeERC20 for IERC20;
+
     /**
      * @notice Underlying asset for this clToken
      */
@@ -30,7 +33,7 @@ contract ClErc20 is IClErc20, ClToken {
      */
     constructor(
         address _underlying,
-        ComptrollerInterface _comptroller,
+        address _comptroller,
         address _interestRateModel,
         uint _initialExchangeRateMantissa,
         string memory _name,
@@ -191,10 +194,9 @@ contract ClErc20 is IClErc20, ClToken {
      */
     function doTransferIn(address _from, uint _amount) internal virtual override returns (uint) {
         // Read from storage once
-        address underlying_ = underlying;
-        EIP20NonStandardInterface token = EIP20NonStandardInterface(underlying_);
-        uint balanceBefore = EIP20Interface(underlying_).balanceOf(address(this));
-        token.transferFrom(_from, address(this), _amount);
+        address _underlying = underlying;
+        uint balanceBefore = IERC20(_underlying).balanceOf(address(this));
+        IERC20(_underlying).safeTransferFrom(_from, address(this), _amount);
 
         bool success;
         assembly {
@@ -216,8 +218,9 @@ contract ClErc20 is IClErc20, ClToken {
         require(success, "TOKEN_TRANSFER_IN_FAILED");
 
         // Calculate the amount that was *actually* transferred
-        uint balanceAfter = EIP20Interface(underlying_).balanceOf(address(this));
-        return balanceAfter - balanceBefore; // underflow already checked above, just subtract
+        uint balanceAfter = IERC20(_underlying).balanceOf(address(this));
+        // underflow already checked above, just subtract
+        return balanceAfter - balanceBefore;
     }
 
     /**
@@ -230,8 +233,7 @@ contract ClErc20 is IClErc20, ClToken {
      * See here: https://medium.com/coinmonks/missing-return-value-bug-at-least-130-tokens-affected-d67bf08521ca
      */
     function doTransferOut(address payable _to, uint _amount) internal virtual override {
-        EIP20NonStandardInterface token = EIP20NonStandardInterface(underlying);
-        token.transfer(_to, _amount);
+        IERC20(underlying).safeTransfer(_to, _amount);
 
         bool success;
         assembly {
