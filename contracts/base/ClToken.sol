@@ -5,7 +5,6 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import "./ComptrollerInterface.sol";
 import "../interfaces/IClToken.sol";
 import "../interfaces/IInterestRateModel.sol";
-import "../ErrorReporter.sol";
 import "../ExponentialNoError.sol";
 
 /**
@@ -14,99 +13,69 @@ import "../ExponentialNoError.sol";
  * @author Modified from Compound CToken
  * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/NewComptroller.sol)
  */
-abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, TokenErrorReporter {
-    /**
-     * @notice Indicator that this is a ClToken contract (for inspection)
-     */
+abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
+    /// @notice Indicator that this is a ClToken contract (for inspection)
     bool public constant isClToken = true;
 
-    // Maximum borrow rate that can ever be applied (.0005% / block)
+    /// @notice Maximum borrow rate that can ever be applied (.0005% / block)
     uint internal constant borrowRateMaxMantissa = 0.0005e16;
 
-    // Maximum fraction of interest that can be set aside for reserves
+    /// @notice Maximum fraction of interest that can be set aside for reserves
     uint internal constant reserveFactorMaxMantissa = 1e18;
 
-    /**
-     * @notice EIP-20 token name for this token
-     */
+    /// @notice Share of seized collateral that is added to reserves
+    uint public constant protocolSeizeShareMantissa = 2.8e16; //2.8%
+
+    /// @notice EIP-20 token name for this token
     string public name;
 
-    /**
-     * @notice EIP-20 token symbol for this token
-     */
+    /// @notice EIP-20 token symbol for this token
     string public symbol;
 
-    /**
-     * @notice EIP-20 token decimals for this token
-     */
+    /// @notice EIP-20 token decimals for this token
     uint8 public decimals;
 
-    /**
-     * @notice Administrator for this contract
-     */
+    /// @notice Administrator for this contract
     address payable public admin;
 
-    /**
-     * @notice Pending administrator for this contract
-     */
+    /// @notice Pending administrator for this contract
     address payable public pendingAdmin;
 
-    /**
-     * @notice Contract which oversees inter-clToken operations
-     */
+    /// @notice Contract which oversees inter-clToken operations
     ComptrollerInterface public comptroller;
 
-    /**
-     * @notice Model which tells what the current interest rate should be
-     */
+    /// @notice Model which tells what the current interest rate should be
     address public interestRateModel;
 
-    // Initial exchange rate used when minting the first clTokens (used when totalSupply = 0)
+    /// @notice Initial exchange rate used when minting the first clTokens (used when totalSupply = 0)
     uint internal initialExchangeRateMantissa;
 
-    /**
-     * @notice Fraction of interest currently set aside for reserves
-     */
+    /// @notice Fraction of interest currently set aside for reserves
     uint public reserveFactorMantissa;
 
-    /**
-     * @notice Block number that interest was last accrued at
-     */
+    /// @notice Block number that interest was last accrued at
     uint public accrualBlockNumber;
 
-    /**
-     * @notice Accumulator of the total earned interest rate since the opening of the market
-     */
+    /// @notice Accumulator of the total earned interest rate since the opening of the market
     uint public borrowIndex;
 
-    /**
-     * @notice Total amount of outstanding borrows of the underlying in this market
-     */
+    /// @notice Total amount of outstanding borrows of the underlying in this market
     uint public totalBorrows;
 
-    /**
-     * @notice Total amount of reserves of the underlying held in this market
-     */
+    /// @notice Total amount of reserves of the underlying held in this market
     uint public totalReserves;
 
-    /**
-     * @notice Total number of tokens in circulation
-     */
+    /// @notice Total number of tokens in circulation
     uint public totalSupply;
 
-    // Official record of token balances for each account
+    /// @notice Official record of token balances for each account
     mapping(address => uint) internal accountTokens;
 
-    // Approved token transfer amounts on behalf of others
+    /// @notice Approved token transfer amounts on behalf of others
     mapping(address => mapping(address => uint)) internal transferAllowances;
 
-    // Mapping of account addresses to outstanding borrow balances
+    /// @notice Mapping of account addresses to outstanding borrow balances
     mapping(address => BorrowSnapshot) internal accountBorrows;
-
-    /**
-     * @notice Share of seized collateral that is added to reserves
-     */
-    uint public constant protocolSeizeShareMantissa = 2.8e16; //2.8%
 
     /**
      * @notice Initialize the money market
@@ -154,9 +123,8 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
      * @dev Admin function to begin change of admin. The newPendingAdmin must call `_acceptAdmin`
      * to finalize the transfer.
      * @param _newPendingAdmin New pending admin.
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function setPendingAdmin(address payable _newPendingAdmin) external override returns (uint) {
+    function setPendingAdmin(address payable _newPendingAdmin) external override {
         // Check caller = admin
         if (msg.sender != admin) {
             revert SetPendingAdminOwnerCheck();
@@ -170,16 +138,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
 
         // Emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin)
         emit NewPendingAdmin(oldPendingAdmin, _newPendingAdmin);
-
-        return NO_ERROR;
     }
 
     /**
      * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
      * @dev Admin function for pending admin to accept role and update admin
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function acceptAdmin() external override returns (uint) {
+    function acceptAdmin() external override {
         // Check caller is pendingAdmin and pendingAdmin ≠ address(0)
         if (msg.sender != pendingAdmin || msg.sender == address(0)) {
             revert AcceptAdminPendingAdminCheck();
@@ -197,8 +162,6 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
 
         emit NewAdmin(oldAdmin, admin);
         emit NewPendingAdmin(oldPendingAdmin, pendingAdmin);
-
-        return NO_ERROR;
     }
 
     /**
@@ -213,7 +176,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
 
         address oldComptroller = address(comptroller);
         // Ensure invoke comptroller.isComptroller() returns true
-        require(ComptrollerInterface(_newComptroller).isComptroller(), "marker method returned false");
+        if (!ComptrollerInterface(_newComptroller).isComptroller()) revert NotComptroller();
 
         // Set market's comptroller to newComptroller
         comptroller = ComptrollerInterface(_newComptroller);
@@ -224,14 +187,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
     /**
      * @notice accrues interest and sets a new reserve factor for the protocol using _setReserveFactorFresh
      * @dev Admin function to accrue interest and set a new reserve factor
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function setReserveFactor(
         uint _newReserveFactorMantissa
-    ) external override nonReentrant returns (uint) {
+    ) external override nonReentrant {
         accrueInterest();
         // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
-        return _setReserveFactorFresh(_newReserveFactorMantissa);
+        _setReserveFactorFresh(_newReserveFactorMantissa);
     }
 
     /**
@@ -249,12 +211,11 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
     /**
      * @notice Accrues interest and reduces reserves by transferring to admin
      * @param reduceAmount Amount of reduction to reserves
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function reduceReserves(uint reduceAmount) external override nonReentrant returns (uint) {
+    function reduceReserves(uint reduceAmount) external override nonReentrant {
         accrueInterest();
         // _reduceReservesFresh emits reserve-reduction-specific logs on errors, so we don't need to.
-        return _reduceReservesFresh(reduceAmount);
+        _reduceReservesFresh(reduceAmount);
     }
 
     /*** View Functions ***/
@@ -282,13 +243,12 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
      * @notice Get a snapshot of the account's balances, and the cached exchange rate
      * @dev This is used by comptroller to more efficiently perform liquidity checks.
      * @param account Address of the account to snapshot
-     * @return (possible error, token balance, borrow balance, exchange rate mantissa)
+     * @return (token balance, borrow balance, exchange rate mantissa)
      */
     function getAccountSnapshot(
         address account
-    ) external view override returns (uint, uint, uint, uint) {
+    ) external view override returns (uint, uint, uint) {
         return (
-            NO_ERROR,
             accountTokens[account],
             borrowBalanceStoredInternal(account),
             _exchangeRateStoredInternal()
@@ -435,16 +395,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
      * @param liquidator The account receiving seized collateral
      * @param borrower The account having collateral seized
      * @param seizeTokens The number of clTokens to seize
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function seize(
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) external override nonReentrant returns (uint) {
+    ) external override nonReentrant {
         seizeInternal(msg.sender, liquidator, borrower, seizeTokens);
-
-        return NO_ERROR;
     }
 
     /**
@@ -452,15 +409,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
      * @dev This calculates interest accrued from the last checkpointed block
      *   up to the current block and writes new checkpoint to storage.
      */
-    function accrueInterest() public virtual override returns (uint) {
+    function accrueInterest() public virtual override {
         /* Remember the initial block number */
         uint currentBlockNumber = _getBlockNumber();
         uint accrualBlockNumberPrior = accrualBlockNumber;
 
         /* Short-circuit accumulating 0 interest */
-        if (accrualBlockNumberPrior == currentBlockNumber) {
-            return NO_ERROR;
-        }
+        if (accrualBlockNumberPrior == currentBlockNumber) return;
 
         /* Read the previous values out of storage */
         uint cashPrior = getCashPrior();
@@ -474,7 +429,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
             borrowsPrior,
             reservesPrior
         );
-        require(borrowRateMantissa <= borrowRateMaxMantissa, "borrow rate is absurdly high");
+        if (borrowRateMantissa > borrowRateMaxMantissa) revert BorrowRateTooHigh();
 
         /* Calculate the number of blocks elapsed since the last accrual */
         uint blockDelta = currentBlockNumber - accrualBlockNumberPrior;
@@ -514,8 +469,6 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
 
         /* We emit an AccrueInterest event */
         emit AccrueInterest(cashPrior, interestAccumulated, borrowIndexNew, totalBorrowsNew);
-
-        return NO_ERROR;
     }
 
     /**
@@ -684,10 +637,9 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
         uint redeemTokensIn,
         uint redeemAmountIn
     ) internal {
-        require(
-            redeemTokensIn == 0 || redeemAmountIn == 0,
-            "one of redeemTokensIn or redeemAmountIn must be zero"
-        );
+        if (redeemTokensIn != 0 && redeemAmountIn != 0) {
+            revert RedeemTokensOrUnderlyingsMustBeZero();
+        }
 
         /* exchangeRate = invoke Exchange Rate Stored() */
         Exp memory exchangeRate = Exp({ mantissa: _exchangeRateStoredInternal() });
@@ -916,12 +868,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
     ) internal nonReentrant {
         accrueInterest();
 
-        uint error = IClToken(clTokenCollateral).accrueInterest();
-        if (error != NO_ERROR) {
-            // accrueInterest emits logs on errors,
-            // but we still want to log the fact that an attempted liquidation failed
-            revert LiquidateAccrueCollateralInterestFailed(error);
-        }
+        IClToken(clTokenCollateral).accrueInterest();
 
         // liquidateBorrowFresh emits borrow-specific logs on errors, so we don't need to
         liquidateBorrowFresh(msg.sender, borrower, repayAmount, clTokenCollateral);
@@ -985,28 +932,23 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
         // EFFECTS & INTERACTIONS
         // (No safe failures beyond this point)
 
-        /* We calculate the number of collateral tokens that will be seized */
-        (uint amountSeizeError, uint seizeTokens) = comptroller.liquidateCalculateSeizeTokens(
+        // We calculate the number of collateral tokens that will be seized
+        uint seizeTokens = comptroller.liquidateCalculateSeizeTokens(
             address(this),
             clTokenCollateral,
             actualRepayAmount
         );
-        require(
-            amountSeizeError == NO_ERROR,
-            "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED"
-        );
 
-        /* Revert if borrower collateral token balance < seizeTokens */
-        require(IClToken(clTokenCollateral).balanceOf(borrower) >= seizeTokens, "LIQUIDATE_SEIZE_TOO_MUCH");
+        // Revert if borrower collateral token balance < seizeTokens
+        if(IClToken(clTokenCollateral).balanceOf(borrower) < seizeTokens) {
+            revert LiquidateSeizeTooMuch();
+        }
 
         // If this is also the collateral, run seizeInternal to avoid re-entrancy, otherwise make an external call
         if (clTokenCollateral == address(this)) {
             seizeInternal(address(this), liquidator, borrower, seizeTokens);
         } else {
-            require(
-                IClToken(clTokenCollateral).seize(liquidator, borrower, seizeTokens) == NO_ERROR,
-                "token seizure failed"
-            );
+            IClToken(clTokenCollateral).seize(liquidator, borrower, seizeTokens);
         }
 
         /* We emit a LiquidateBorrow event */
@@ -1081,9 +1023,8 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
     /**
      * @notice Sets a new reserve factor for the protocol (*requires fresh interest accrual)
      * @dev Admin function to set a new reserve factor
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setReserveFactorFresh(uint newReserveFactorMantissa) internal returns (uint) {
+    function _setReserveFactorFresh(uint newReserveFactorMantissa) internal {
         // Check caller is admin
         if (msg.sender != admin) {
             revert SetReserveFactorAdminCheck();
@@ -1103,8 +1044,6 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
         reserveFactorMantissa = newReserveFactorMantissa;
 
         emit NewReserveFactor(oldReserveFactorMantissa, newReserveFactorMantissa);
-
-        return NO_ERROR;
     }
 
     /**
@@ -1122,10 +1061,9 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
      * @notice Add reserves by transferring from caller
      * @dev Requires fresh interest accrual
      * @param addAmount Amount of addition to reserves
-     * @return (uint, uint) An error code (0=success, otherwise a failure (see ErrorReporter.sol for details))
-     * and the actual amount added, net token fees
+     * @return The actual amount added, net token fees
      */
-    function _addReservesFresh(uint addAmount) internal returns (uint, uint) {
+    function _addReservesFresh(uint addAmount) internal returns (uint) {
         // totalReserves + actualAddAmount
         uint totalReservesNew;
         uint actualAddAmount;
@@ -1157,17 +1095,15 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
         /* Emit NewReserves(admin, actualAddAmount, reserves[n+1]) */
         emit ReservesAdded(msg.sender, actualAddAmount, totalReservesNew);
 
-        /* Return (NO_ERROR, actualAddAmount) */
-        return (NO_ERROR, actualAddAmount);
+        return actualAddAmount;
     }
 
     /**
      * @notice Reduces reserves by transferring to admin
      * @dev Requires fresh interest accrual
      * @param reduceAmount Amount of reduction to reserves
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _reduceReservesFresh(uint reduceAmount) internal returns (uint) {
+    function _reduceReservesFresh(uint reduceAmount) internal {
         // totalReserves - reduceAmount
         uint totalReservesNew;
 
@@ -1204,8 +1140,6 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError, Toke
         doTransferOut(admin, reduceAmount);
 
         emit ReservesReduced(admin, reduceAmount, totalReservesNew);
-
-        return NO_ERROR;
     }
 
     /**

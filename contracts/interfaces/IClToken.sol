@@ -24,6 +24,57 @@ interface IClToken {
     error NotAdmin();
     error OnlyOnceInitialization();
     error ZeroExchangeRate();
+    error NotComptroller();
+    error BorrowRateTooHigh();
+    error RedeemTokensOrUnderlyingsMustBeZero();
+    error LiquidateSeizeTooMuch();
+
+    error TransferComptrollerRejection(uint256 errorCode);
+    error TransferNotAllowed();
+
+    error MintComptrollerRejection(uint256 errorCode);
+    error MintFreshnessCheck();
+
+    error RedeemComptrollerRejection(uint256 errorCode);
+    error RedeemFreshnessCheck();
+    error RedeemTransferOutNotPossible();
+
+    error BorrowComptrollerRejection(uint256 errorCode);
+    error BorrowFreshnessCheck();
+    error BorrowCashNotAvailable();
+
+    error RepayBorrowComptrollerRejection(uint256 errorCode);
+    error RepayBorrowFreshnessCheck();
+
+    error LiquidateComptrollerRejection(uint256 errorCode);
+    error LiquidateFreshnessCheck();
+    error LiquidateCollateralFreshnessCheck();
+    error LiquidateLiquidatorIsBorrower();
+    error LiquidateCloseAmountIsZero();
+    error LiquidateCloseAmountIsUintMax();
+
+    error LiquidateSeizeComptrollerRejection(uint256 errorCode);
+    error LiquidateSeizeLiquidatorIsBorrower();
+
+    error AcceptAdminPendingAdminCheck();
+
+    error SetComptrollerOwnerCheck();
+    error SetPendingAdminOwnerCheck();
+
+    error SetReserveFactorAdminCheck();
+    error SetReserveFactorFreshCheck();
+    error SetReserveFactorBoundsCheck();
+
+    error AddReservesFactorFreshCheck(uint256 actualAddAmount);
+
+    error ReduceReservesAdminCheck();
+    error ReduceReservesFreshCheck();
+    error ReduceReservesCashNotAvailable();
+    error ReduceReservesCashValidation();
+
+    error SetInterestRateModelOwnerCheck();
+    error SetInterestRateModelFreshCheck();
+    error InvalidInterestRateModel();
 
     /*** Market Events ***/
 
@@ -133,9 +184,7 @@ interface IClToken {
     function allowance(address owner, address spender) external view returns (uint);
     function balanceOf(address owner) external view returns (uint);
     function balanceOfUnderlying(address owner) external returns (uint);
-    function getAccountSnapshot(
-        address account
-    ) external view returns (uint, uint, uint, uint);
+    function getAccountSnapshot(address account) external view returns (uint, uint, uint);
     function borrowRatePerBlock() external view returns (uint);
     function supplyRatePerBlock() external view returns (uint);
     function totalBorrowsCurrent() external returns (uint);
@@ -144,19 +193,15 @@ interface IClToken {
     function exchangeRateCurrent() external returns (uint);
     function exchangeRateStored() external view returns (uint);
     function getCash() external view returns (uint);
-    function accrueInterest() external returns (uint);
-    function seize(
-        address liquidator,
-        address borrower,
-        uint seizeTokens
-    ) external returns (uint);
+    function accrueInterest() external;
+    function seize(address liquidator, address borrower, uint seizeTokens) external;
 
     /*** Admin Functions ***/
 
-    function setPendingAdmin(address payable _newPendingAdmin) external returns (uint);
-    function acceptAdmin() external returns (uint);
+    function setPendingAdmin(address payable _newPendingAdmin) external;
+    function acceptAdmin() external;
     function setComptroller(address _newComptroller) external;
-    function setReserveFactor(uint _newReserveFactorMantissa) external returns (uint);
-    function reduceReserves(uint _reduceAmount) external returns (uint);
+    function setReserveFactor(uint _newReserveFactorMantissa) external;
+    function reduceReserves(uint _reduceAmount) external;
     function setInterestRateModel(address _newInterestRateModel) external;
 }

@@ -135,5 +135,5 @@ abstract contract ComptrollerInterface {
         address clTokenBorrowed,
         address clTokenCollateral,
         uint repayAmount
-    ) external view virtual returns (uint, uint);
+    ) external view virtual returns (uint);
 }

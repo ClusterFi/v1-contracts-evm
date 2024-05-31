@@ -198,10 +198,7 @@ contract Comptroller is
     function exitMarket(address clTokenAddress) external override returns (uint) {
         ClToken clToken = ClToken(clTokenAddress);
         /* Get sender tokensHeld and amountOwed underlying from the clToken */
-        (uint oErr, uint tokensHeld, uint amountOwed, ) = clToken.getAccountSnapshot(msg.sender);
-        if (oErr != 0) {
-            revert ExitMarketGetAccountSnapshotFailed();
-        }
+        (uint tokensHeld, uint amountOwed, ) = clToken.getAccountSnapshot(msg.sender);
 
         /* Fail if the sender has a borrow balance */
         if (amountOwed != 0) {
@@ -832,7 +829,6 @@ contract Comptroller is
         uint borrowAmount
     ) internal view returns (Error, uint, uint) {
         AccountLiquidityLocalVars memory vars; // Holds all our calculation results
-        uint oErr;
 
         // For each asset the account is in
         ClToken[] memory assets = accountAssets[account];
@@ -840,12 +836,9 @@ contract Comptroller is
             ClToken asset = assets[i];
 
             // Read the balances and exchange rate from the clToken
-            (oErr, vars.clTokenBalance, vars.borrowBalance, vars.exchangeRateMantissa) = asset
+            (vars.clTokenBalance, vars.borrowBalance, vars.exchangeRateMantissa) = asset
                 .getAccountSnapshot(account);
-            if (oErr != 0) {
-                // semi-opaque error code, we assume NO_ERROR == 0 is invariant between upgrades
-                return (Error.SNAPSHOT_ERROR, 0, 0);
-            }
+
             vars.collateralFactor = Exp({
                 mantissa: markets[address(asset)].collateralFactorMantissa
             });
@@ -912,18 +905,18 @@ contract Comptroller is
      * @param clTokenBorrowed The address of the borrowed clToken
      * @param clTokenCollateral The address of the collateral clToken
      * @param actualRepayAmount The amount of clTokenBorrowed underlying to convert into clTokenCollateral tokens
-     * @return (errorCode, number of clTokenCollateral tokens to be seized in a liquidation)
+     * @return The number of clTokenCollateral tokens to be seized in a liquidation
      */
     function liquidateCalculateSeizeTokens(
         address clTokenBorrowed,
         address clTokenCollateral,
         uint actualRepayAmount
-    ) external view override returns (uint, uint) {
+    ) external view override returns (uint) {
         /* Read oracle prices for borrowed and collateral markets */
         uint priceBorrowedMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clTokenBorrowed));
         uint priceCollateralMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clTokenCollateral));
         if (priceBorrowedMantissa == 0 || priceCollateralMantissa == 0) {
-            return (uint(Error.PRICE_ERROR), 0);
+            return 0;
         }
 
         /*
@@ -950,7 +943,7 @@ contract Comptroller is
 
         seizeTokens = mul_ScalarTruncate(ratio, actualRepayAmount);
 
-        return (uint(Error.NO_ERROR), seizeTokens);
+        return seizeTokens;
     }
 
     /*** Admin Functions ***/
