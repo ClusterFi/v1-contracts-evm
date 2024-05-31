@@ -1,65 +1,474 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
-import "../base/ComptrollerInterface.sol";
-import "../base/ClTokenInterfaces.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./ComptrollerInterface.sol";
+import "../interfaces/IClToken.sol";
 import "../interfaces/IInterestRateModel.sol";
-import "../interfaces/EIP20Interface.sol";
-import "../ErrorReporter.sol";
 import "../ExponentialNoError.sol";
 
 /**
  * @title Cluster's ClToken Contract
- * @notice Abstract base for ClTokens
+ * @notice Defines abstract for ClErc20 contract
  * @author Modified from Compound CToken
- * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/CToken.sol)
+ * (https://github.com/compound-finance/compound-protocol/blob/master/contracts/NewComptroller.sol)
  */
-abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorReporter {
+abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
+    /// @notice Indicator that this is a ClToken contract (for inspection)
+    bool public constant isClToken = true;
+
+    /// @notice Maximum borrow rate that can ever be applied (.0005% / block)
+    uint internal constant borrowRateMaxMantissa = 0.0005e16;
+
+    /// @notice Maximum fraction of interest that can be set aside for reserves
+    uint internal constant reserveFactorMaxMantissa = 1e18;
+
+    /// @notice Share of seized collateral that is added to reserves
+    uint public constant protocolSeizeShareMantissa = 2.8e16; //2.8%
+
+    /// @notice EIP-20 token name for this token
+    string public name;
+
+    /// @notice EIP-20 token symbol for this token
+    string public symbol;
+
+    /// @notice EIP-20 token decimals for this token
+    uint8 public decimals;
+
+    /// @notice Administrator for this contract
+    address payable public admin;
+
+    /// @notice Pending administrator for this contract
+    address payable public pendingAdmin;
+
+    /// @notice Contract which oversees inter-clToken operations
+    ComptrollerInterface public comptroller;
+
+    /// @notice Model which tells what the current interest rate should be
+    address public interestRateModel;
+
+    /// @notice Initial exchange rate used when minting the first clTokens (used when totalSupply = 0)
+    uint internal initialExchangeRateMantissa;
+
+    /// @notice Fraction of interest currently set aside for reserves
+    uint public reserveFactorMantissa;
+
+    /// @notice Block number that interest was last accrued at
+    uint public accrualBlockNumber;
+
+    /// @notice Accumulator of the total earned interest rate since the opening of the market
+    uint public borrowIndex;
+
+    /// @notice Total amount of outstanding borrows of the underlying in this market
+    uint public totalBorrows;
+
+    /// @notice Total amount of reserves of the underlying held in this market
+    uint public totalReserves;
+
+    /// @notice Total number of tokens in circulation
+    uint public totalSupply;
+
+    /// @notice Official record of token balances for each account
+    mapping(address => uint) internal accountTokens;
+
+    /// @notice Approved token transfer amounts on behalf of others
+    mapping(address => mapping(address => uint)) internal transferAllowances;
+
+    /// @notice Mapping of account addresses to outstanding borrow balances
+    mapping(address => BorrowSnapshot) internal accountBorrows;
+
     /**
      * @notice Initialize the money market
-     * @param comptroller_ The address of the Comptroller
-     * @param interestRateModel_ The address of the interest rate model
-     * @param initialExchangeRateMantissa_ The initial exchange rate, scaled by 1e18
-     * @param name_ EIP-20 name of this token
-     * @param symbol_ EIP-20 symbol of this token
-     * @param decimals_ EIP-20 decimal precision of this token
+     * @param _comptroller The address of the Comptroller
+     * @param _interestRateModel The address of the interest rate model
+     * @param _initialExchangeRateMantissa The initial exchange rate, scaled by 1e18
+     * @param _name EIP-20 name of this token
+     * @param _symbol EIP-20 symbol of this token
+     * @param _decimals EIP-20 decimal precision of this token
      */
     function initialize(
-        ComptrollerInterface comptroller_,
-        address interestRateModel_,
-        uint initialExchangeRateMantissa_,
-        string memory name_,
-        string memory symbol_,
-        uint8 decimals_
+        address _comptroller,
+        address _interestRateModel,
+        uint _initialExchangeRateMantissa,
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals
     ) public {
-        require(msg.sender == admin, "only admin may initialize the market");
-        require(accrualBlockNumber == 0 && borrowIndex == 0, "market may only be initialized once");
+        if (msg.sender != admin) revert NotAdmin();
+        if (accrualBlockNumber != 0 || borrowIndex != 0) revert OnlyOnceInitialization();
 
         // Set initial exchange rate
-        initialExchangeRateMantissa = initialExchangeRateMantissa_;
-        require(
-            initialExchangeRateMantissa > 0,
-            "initial exchange rate must be greater than zero."
-        );
+        if (_initialExchangeRateMantissa == 0) revert ZeroExchangeRate();
+        initialExchangeRateMantissa = _initialExchangeRateMantissa;
 
         // Set the comptroller
-        uint err = setComptroller(comptroller_);
-        require(err == NO_ERROR, "setting comptroller failed");
+        setComptroller(_comptroller);
 
         // Initialize block number and borrow index (block number mocks depend on comptroller being set)
-        accrualBlockNumber = getBlockNumber();
+        accrualBlockNumber = _getBlockNumber();
         borrowIndex = mantissaOne;
 
         // Set the interest rate model (depends on block number / borrow index)
-        err = _setInterestRateModelFresh(interestRateModel_);
-        require(err == NO_ERROR, "setting interest rate model failed");
+        _setInterestRateModelFresh(_interestRateModel);
 
-        name = name_;
-        symbol = symbol_;
-        decimals = decimals_;
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+    }
 
-        // The counter starts true to prevent changing it from zero to non-zero (i.e. smaller cost/refund)
-        _notEntered = true;
+    /*** Admin Functions ***/
+
+    /**
+     * @notice Begins transfer of admin rights. The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
+     * @dev Admin function to begin change of admin. The newPendingAdmin must call `_acceptAdmin`
+     * to finalize the transfer.
+     * @param _newPendingAdmin New pending admin.
+     */
+    function setPendingAdmin(address payable _newPendingAdmin) external override {
+        // Check caller = admin
+        if (msg.sender != admin) {
+            revert SetPendingAdminOwnerCheck();
+        }
+
+        // Save current value, if any, for inclusion in log
+        address oldPendingAdmin = pendingAdmin;
+
+        // Store pendingAdmin with value newPendingAdmin
+        pendingAdmin = _newPendingAdmin;
+
+        // Emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin)
+        emit NewPendingAdmin(oldPendingAdmin, _newPendingAdmin);
+    }
+
+    /**
+     * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
+     * @dev Admin function for pending admin to accept role and update admin
+     */
+    function acceptAdmin() external override {
+        // Check caller is pendingAdmin and pendingAdmin ≠ address(0)
+        if (msg.sender != pendingAdmin || msg.sender == address(0)) {
+            revert AcceptAdminPendingAdminCheck();
+        }
+
+        // Save current values for inclusion in log
+        address oldAdmin = admin;
+        address oldPendingAdmin = pendingAdmin;
+
+        // Store admin with value pendingAdmin
+        admin = pendingAdmin;
+
+        // Clear the pending value
+        pendingAdmin = payable(address(0));
+
+        emit NewAdmin(oldAdmin, admin);
+        emit NewPendingAdmin(oldPendingAdmin, pendingAdmin);
+    }
+
+    /**
+     * @notice Sets a new comptroller for the market
+     * @dev Admin function to set a new comptroller
+     */
+    function setComptroller(address _newComptroller) public override {
+        // Check caller is admin
+        if (msg.sender != admin) {
+            revert SetComptrollerOwnerCheck();
+        }
+
+        address oldComptroller = address(comptroller);
+        // Ensure invoke comptroller.isComptroller() returns true
+        if (!ComptrollerInterface(_newComptroller).isComptroller()) revert NotComptroller();
+
+        // Set market's comptroller to newComptroller
+        comptroller = ComptrollerInterface(_newComptroller);
+
+        emit NewComptroller(oldComptroller, _newComptroller);
+    }
+
+    /**
+     * @notice accrues interest and sets a new reserve factor for the protocol using _setReserveFactorFresh
+     * @dev Admin function to accrue interest and set a new reserve factor
+     */
+    function setReserveFactor(
+        uint _newReserveFactorMantissa
+    ) external override nonReentrant {
+        accrueInterest();
+        // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
+        _setReserveFactorFresh(_newReserveFactorMantissa);
+    }
+
+    /**
+     * @notice accrues interest and updates the interest rate model using _setInterestRateModelFresh
+     * @dev Admin function to accrue interest and update the interest rate model
+     * @param _newInterestRateModel the new interest rate model to use
+     */
+    function setInterestRateModel(address _newInterestRateModel) external override {
+        accrueInterest();
+        // _setInterestRateModelFresh emits interest-rate-model-update-specific logs on errors,
+        // so we don't need to.
+        _setInterestRateModelFresh(_newInterestRateModel);
+    }
+
+    /**
+     * @notice Accrues interest and reduces reserves by transferring to admin
+     * @param reduceAmount Amount of reduction to reserves
+     */
+    function reduceReserves(uint reduceAmount) external override nonReentrant {
+        accrueInterest();
+        // _reduceReservesFresh emits reserve-reduction-specific logs on errors, so we don't need to.
+        _reduceReservesFresh(reduceAmount);
+    }
+
+    /*** View Functions ***/
+
+    /**
+     * @notice Get the token balance of the `owner`
+     * @param owner The address of the account to query
+     * @return The number of tokens owned by `owner`
+     */
+    function balanceOf(address owner) external view override returns (uint256) {
+        return accountTokens[owner];
+    }
+
+    /**
+     * @notice Get the current allowance from `owner` for `spender`
+     * @param owner The address of the account which owns the tokens to be spent
+     * @param spender The address of the account which may transfer tokens
+     * @return The number of tokens allowed to be spent (-1 means infinite)
+     */
+    function allowance(address owner, address spender) external view override returns (uint256) {
+        return transferAllowances[owner][spender];
+    }
+
+    /**
+     * @notice Get a snapshot of the account's balances, and the cached exchange rate
+     * @dev This is used by comptroller to more efficiently perform liquidity checks.
+     * @param account Address of the account to snapshot
+     * @return (token balance, borrow balance, exchange rate mantissa)
+     */
+    function getAccountSnapshot(
+        address account
+    ) external view override returns (uint, uint, uint) {
+        return (
+            accountTokens[account],
+            borrowBalanceStoredInternal(account),
+            _exchangeRateStoredInternal()
+        );
+    }
+
+    /**
+     * @notice Returns the current per-block borrow interest rate for this clToken
+     * @return The borrow interest rate per block, scaled by 1e18
+     */
+    function borrowRatePerBlock() external view override returns (uint) {
+        return
+            IInterestRateModel(interestRateModel).getBorrowRate(
+                getCashPrior(),
+                totalBorrows,
+                totalReserves
+            );
+    }
+
+    /**
+     * @notice Returns the current per-block supply interest rate for this clToken
+     * @return The supply interest rate per block, scaled by 1e18
+     */
+    function supplyRatePerBlock() external view override returns (uint) {
+        return
+            IInterestRateModel(interestRateModel).getSupplyRate(
+                getCashPrior(),
+                totalBorrows,
+                totalReserves,
+                reserveFactorMantissa
+            );
+    }
+
+    /**
+     * @notice Get cash balance of this clToken in the underlying asset
+     * @return The quantity of underlying asset owned by this contract
+     */
+    function getCash() external view override returns (uint) {
+        return getCashPrior();
+    }
+
+    /**
+     * @notice Return the borrow balance of account based on stored data
+     * @param account The address whose balance should be calculated
+     * @return The calculated balance
+     */
+    function borrowBalanceStored(address account) public view override returns (uint) {
+        return borrowBalanceStoredInternal(account);
+    }
+
+    /**
+     * @notice Calculates the exchange rate from the underlying to the ClToken
+     * @dev This function does not accrue interest before calculating the exchange rate
+     * @return Calculated exchange rate scaled by 1e18
+     */
+    function exchangeRateStored() public view override returns (uint) {
+        return _exchangeRateStoredInternal();
+    }
+
+    /**
+     * @notice Transfer `amount` tokens from `msg.sender` to `dst`
+     * @param dst The address of the destination account
+     * @param amount The number of tokens to transfer
+     * @return Whether or not the transfer succeeded
+     */
+    function transfer(address dst, uint256 amount) external override nonReentrant returns (bool) {
+        return _transferTokens(msg.sender, msg.sender, dst, amount);
+    }
+
+    /**
+     * @notice Transfer `amount` tokens from `src` to `dst`
+     * @param src The address of the source account
+     * @param dst The address of the destination account
+     * @param amount The number of tokens to transfer
+     * @return Whether or not the transfer succeeded
+     */
+    function transferFrom(
+        address src,
+        address dst,
+        uint256 amount
+    ) external override nonReentrant returns (bool) {
+        return _transferTokens(msg.sender, src, dst, amount);
+    }
+
+    /**
+     * @notice Approve `spender` to transfer up to `amount` from `src`
+     * @dev This will overwrite the approval amount for `spender`
+     *  and is subject to issues noted [here](https://eips.ethereum.org/EIPS/eip-20#approve)
+     * @param spender The address of the account which may transfer tokens
+     * @param amount The number of tokens that are approved (uint256.max means infinite)
+     * @return Whether or not the approval succeeded
+     */
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        address src = msg.sender;
+        transferAllowances[src][spender] = amount;
+        emit Approval(src, spender, amount);
+        return true;
+    }
+
+    /**
+     * @notice Get the underlying balance of the `owner`
+     * @dev This also accrues interest in a transaction
+     * @param owner The address of the account to query
+     * @return The amount of underlying owned by `owner`
+     */
+    function balanceOfUnderlying(address owner) external override returns (uint) {
+        Exp memory exchangeRate = Exp({ mantissa: exchangeRateCurrent() });
+        return mul_ScalarTruncate(exchangeRate, accountTokens[owner]);
+    }
+
+    /**
+     * @notice Returns the current total borrows plus accrued interest
+     * @return The total borrows with interest
+     */
+    function totalBorrowsCurrent() external override nonReentrant returns (uint) {
+        accrueInterest();
+        return totalBorrows;
+    }
+
+    /**
+     * @notice Accrue interest to updated borrowIndex and then calculate account's borrow balance
+     * using the updated borrowIndex
+     * @param account The address whose balance should be calculated after updating borrowIndex
+     * @return The calculated balance
+     */
+    function borrowBalanceCurrent(address account) external override nonReentrant returns (uint) {
+        accrueInterest();
+        return borrowBalanceStored(account);
+    }
+
+    /**
+     * @notice Accrue interest then return the up-to-date exchange rate
+     * @return Calculated exchange rate scaled by 1e18
+     */
+    function exchangeRateCurrent() public override nonReentrant returns (uint) {
+        accrueInterest();
+        return exchangeRateStored();
+    }
+
+    /**
+     * @notice Transfers collateral tokens (this market) to the liquidator.
+     * @dev Will fail unless called by another clToken during the process of liquidation.
+     *  Its absolutely critical to use msg.sender as the borrowed clToken and not a parameter.
+     * @param liquidator The account receiving seized collateral
+     * @param borrower The account having collateral seized
+     * @param seizeTokens The number of clTokens to seize
+     */
+    function seize(
+        address liquidator,
+        address borrower,
+        uint seizeTokens
+    ) external override nonReentrant {
+        seizeInternal(msg.sender, liquidator, borrower, seizeTokens);
+    }
+
+    /**
+     * @notice Applies accrued interest to total borrows and reserves
+     * @dev This calculates interest accrued from the last checkpointed block
+     *   up to the current block and writes new checkpoint to storage.
+     */
+    function accrueInterest() public virtual override {
+        /* Remember the initial block number */
+        uint currentBlockNumber = _getBlockNumber();
+        uint accrualBlockNumberPrior = accrualBlockNumber;
+
+        /* Short-circuit accumulating 0 interest */
+        if (accrualBlockNumberPrior == currentBlockNumber) return;
+
+        /* Read the previous values out of storage */
+        uint cashPrior = getCashPrior();
+        uint borrowsPrior = totalBorrows;
+        uint reservesPrior = totalReserves;
+        uint borrowIndexPrior = borrowIndex;
+
+        /* Calculate the current borrow interest rate */
+        uint borrowRateMantissa = IInterestRateModel(interestRateModel).getBorrowRate(
+            cashPrior,
+            borrowsPrior,
+            reservesPrior
+        );
+        if (borrowRateMantissa > borrowRateMaxMantissa) revert BorrowRateTooHigh();
+
+        /* Calculate the number of blocks elapsed since the last accrual */
+        uint blockDelta = currentBlockNumber - accrualBlockNumberPrior;
+
+        /*
+         * Calculate the interest accumulated into borrows and reserves and the new index:
+         *  simpleInterestFactor = borrowRate * blockDelta
+         *  interestAccumulated = simpleInterestFactor * totalBorrows
+         *  totalBorrowsNew = interestAccumulated + totalBorrows
+         *  totalReservesNew = interestAccumulated * reserveFactor + totalReserves
+         *  borrowIndexNew = simpleInterestFactor * borrowIndex + borrowIndex
+         */
+
+        Exp memory simpleInterestFactor = mul_(Exp({ mantissa: borrowRateMantissa }), blockDelta);
+        uint interestAccumulated = mul_ScalarTruncate(simpleInterestFactor, borrowsPrior);
+        uint totalBorrowsNew = interestAccumulated + borrowsPrior;
+        uint totalReservesNew = mul_ScalarTruncateAddUInt(
+            Exp({ mantissa: reserveFactorMantissa }),
+            interestAccumulated,
+            reservesPrior
+        );
+        uint borrowIndexNew = mul_ScalarTruncateAddUInt(
+            simpleInterestFactor,
+            borrowIndexPrior,
+            borrowIndexPrior
+        );
+
+        /////////////////////////
+        // EFFECTS & INTERACTIONS
+        // (No safe failures beyond this point)
+
+        /* We write the previously calculated values into storage */
+        accrualBlockNumber = currentBlockNumber;
+        borrowIndex = borrowIndexNew;
+        totalBorrows = totalBorrowsNew;
+        totalReserves = totalReservesNew;
+
+        /* We emit an AccrueInterest event */
+        emit AccrueInterest(cashPrior, interestAccumulated, borrowIndexNew, totalBorrowsNew);
     }
 
     /**
@@ -71,12 +480,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * @param tokens The number of tokens to transfer
      * @return 0 if the transfer succeeded, else revert
      */
-    function transferTokens(
+    function _transferTokens(
         address spender,
         address src,
         address dst,
         uint tokens
-    ) internal returns (uint) {
+    ) internal returns (bool) {
         /* Fail if transfer not allowed */
         uint allowed = comptroller.transferAllowed(address(this), src, dst, tokens);
         if (allowed != 0) {
@@ -119,304 +528,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         // unused function
         // comptroller.transferVerify(address(this), src, dst, tokens);
 
-        return NO_ERROR;
-    }
-
-    /**
-     * @notice Transfer `amount` tokens from `msg.sender` to `dst`
-     * @param dst The address of the destination account
-     * @param amount The number of tokens to transfer
-     * @return Whether or not the transfer succeeded
-     */
-    function transfer(address dst, uint256 amount) external override nonReentrant returns (bool) {
-        return transferTokens(msg.sender, msg.sender, dst, amount) == NO_ERROR;
-    }
-
-    /**
-     * @notice Transfer `amount` tokens from `src` to `dst`
-     * @param src The address of the source account
-     * @param dst The address of the destination account
-     * @param amount The number of tokens to transfer
-     * @return Whether or not the transfer succeeded
-     */
-    function transferFrom(
-        address src,
-        address dst,
-        uint256 amount
-    ) external override nonReentrant returns (bool) {
-        return transferTokens(msg.sender, src, dst, amount) == NO_ERROR;
-    }
-
-    /**
-     * @notice Approve `spender` to transfer up to `amount` from `src`
-     * @dev This will overwrite the approval amount for `spender`
-     *  and is subject to issues noted [here](https://eips.ethereum.org/EIPS/eip-20#approve)
-     * @param spender The address of the account which may transfer tokens
-     * @param amount The number of tokens that are approved (uint256.max means infinite)
-     * @return Whether or not the approval succeeded
-     */
-    function approve(address spender, uint256 amount) external override returns (bool) {
-        address src = msg.sender;
-        transferAllowances[src][spender] = amount;
-        emit Approval(src, spender, amount);
         return true;
-    }
-
-    /**
-     * @notice Get the current allowance from `owner` for `spender`
-     * @param owner The address of the account which owns the tokens to be spent
-     * @param spender The address of the account which may transfer tokens
-     * @return The number of tokens allowed to be spent (-1 means infinite)
-     */
-    function allowance(address owner, address spender) external view override returns (uint256) {
-        return transferAllowances[owner][spender];
-    }
-
-    /**
-     * @notice Get the token balance of the `owner`
-     * @param owner The address of the account to query
-     * @return The number of tokens owned by `owner`
-     */
-    function balanceOf(address owner) external view override returns (uint256) {
-        return accountTokens[owner];
-    }
-
-    /**
-     * @notice Get the underlying balance of the `owner`
-     * @dev This also accrues interest in a transaction
-     * @param owner The address of the account to query
-     * @return The amount of underlying owned by `owner`
-     */
-    function balanceOfUnderlying(address owner) external override returns (uint) {
-        Exp memory exchangeRate = Exp({ mantissa: exchangeRateCurrent() });
-        return mul_ScalarTruncate(exchangeRate, accountTokens[owner]);
-    }
-
-    /**
-     * @notice Get a snapshot of the account's balances, and the cached exchange rate
-     * @dev This is used by comptroller to more efficiently perform liquidity checks.
-     * @param account Address of the account to snapshot
-     * @return (possible error, token balance, borrow balance, exchange rate mantissa)
-     */
-    function getAccountSnapshot(
-        address account
-    ) external view override returns (uint, uint, uint, uint) {
-        return (
-            NO_ERROR,
-            accountTokens[account],
-            borrowBalanceStoredInternal(account),
-            exchangeRateStoredInternal()
-        );
-    }
-
-    /**
-     * @dev Function to simply retrieve block number
-     *  This exists mainly for inheriting test contracts to stub this result.
-     */
-    function getBlockNumber() internal view virtual returns (uint) {
-        return block.number;
-    }
-
-    /**
-     * @notice Returns the current per-block borrow interest rate for this clToken
-     * @return The borrow interest rate per block, scaled by 1e18
-     */
-    function borrowRatePerBlock() external view override returns (uint) {
-        return
-            IInterestRateModel(interestRateModel).getBorrowRate(
-                getCashPrior(),
-                totalBorrows,
-                totalReserves
-            );
-    }
-
-    /**
-     * @notice Returns the current per-block supply interest rate for this clToken
-     * @return The supply interest rate per block, scaled by 1e18
-     */
-    function supplyRatePerBlock() external view override returns (uint) {
-        return
-            IInterestRateModel(interestRateModel).getSupplyRate(
-                getCashPrior(),
-                totalBorrows,
-                totalReserves,
-                reserveFactorMantissa
-            );
-    }
-
-    /**
-     * @notice Returns the current total borrows plus accrued interest
-     * @return The total borrows with interest
-     */
-    function totalBorrowsCurrent() external override nonReentrant returns (uint) {
-        accrueInterest();
-        return totalBorrows;
-    }
-
-    /**
-     * @notice Accrue interest to updated borrowIndex and then calculate account's borrow balance
-     * using the updated borrowIndex
-     * @param account The address whose balance should be calculated after updating borrowIndex
-     * @return The calculated balance
-     */
-    function borrowBalanceCurrent(address account) external override nonReentrant returns (uint) {
-        accrueInterest();
-        return borrowBalanceStored(account);
-    }
-
-    /**
-     * @notice Return the borrow balance of account based on stored data
-     * @param account The address whose balance should be calculated
-     * @return The calculated balance
-     */
-    function borrowBalanceStored(address account) public view override returns (uint) {
-        return borrowBalanceStoredInternal(account);
-    }
-
-    /**
-     * @notice Return the borrow balance of account based on stored data
-     * @param account The address whose balance should be calculated
-     * @return (error code, the calculated balance or 0 if error code is non-zero)
-     */
-    function borrowBalanceStoredInternal(address account) internal view returns (uint) {
-        /* Get borrowBalance and borrowIndex */
-        BorrowSnapshot storage borrowSnapshot = accountBorrows[account];
-
-        /* If borrowBalance = 0 then borrowIndex is likely also 0.
-         * Rather than failing the calculation with a division by 0, we immediately return 0 in this case.
-         */
-        if (borrowSnapshot.principal == 0) {
-            return 0;
-        }
-
-        /* Calculate new borrow balance using the interest index:
-         *  recentBorrowBalance = borrower.borrowBalance * market.borrowIndex / borrower.borrowIndex
-         */
-        uint principalTimesIndex = borrowSnapshot.principal * borrowIndex;
-        return principalTimesIndex / borrowSnapshot.interestIndex;
-    }
-
-    /**
-     * @notice Accrue interest then return the up-to-date exchange rate
-     * @return Calculated exchange rate scaled by 1e18
-     */
-    function exchangeRateCurrent() public override nonReentrant returns (uint) {
-        accrueInterest();
-        return exchangeRateStored();
-    }
-
-    /**
-     * @notice Calculates the exchange rate from the underlying to the ClToken
-     * @dev This function does not accrue interest before calculating the exchange rate
-     * @return Calculated exchange rate scaled by 1e18
-     */
-    function exchangeRateStored() public view override returns (uint) {
-        return exchangeRateStoredInternal();
-    }
-
-    /**
-     * @notice Calculates the exchange rate from the underlying to the ClToken
-     * @dev This function does not accrue interest before calculating the exchange rate
-     * @return calculated exchange rate scaled by 1e18
-     */
-    function exchangeRateStoredInternal() internal view virtual returns (uint) {
-        uint _totalSupply = totalSupply;
-        if (_totalSupply == 0) {
-            /*
-             * If there are no tokens minted:
-             *  exchangeRate = initialExchangeRate
-             */
-            return initialExchangeRateMantissa;
-        } else {
-            /*
-             * Otherwise:
-             *  exchangeRate = (totalCash + totalBorrows - totalReserves) / totalSupply
-             */
-            uint totalCash = getCashPrior();
-            uint cashPlusBorrowsMinusReserves = totalCash + totalBorrows - totalReserves;
-            uint exchangeRate = (cashPlusBorrowsMinusReserves * expScale) / _totalSupply;
-
-            return exchangeRate;
-        }
-    }
-
-    /**
-     * @notice Get cash balance of this clToken in the underlying asset
-     * @return The quantity of underlying asset owned by this contract
-     */
-    function getCash() external view override returns (uint) {
-        return getCashPrior();
-    }
-
-    /**
-     * @notice Applies accrued interest to total borrows and reserves
-     * @dev This calculates interest accrued from the last checkpointed block
-     *   up to the current block and writes new checkpoint to storage.
-     */
-    function accrueInterest() public virtual override returns (uint) {
-        /* Remember the initial block number */
-        uint currentBlockNumber = getBlockNumber();
-        uint accrualBlockNumberPrior = accrualBlockNumber;
-
-        /* Short-circuit accumulating 0 interest */
-        if (accrualBlockNumberPrior == currentBlockNumber) {
-            return NO_ERROR;
-        }
-
-        /* Read the previous values out of storage */
-        uint cashPrior = getCashPrior();
-        uint borrowsPrior = totalBorrows;
-        uint reservesPrior = totalReserves;
-        uint borrowIndexPrior = borrowIndex;
-
-        /* Calculate the current borrow interest rate */
-        uint borrowRateMantissa = IInterestRateModel(interestRateModel).getBorrowRate(
-            cashPrior,
-            borrowsPrior,
-            reservesPrior
-        );
-        require(borrowRateMantissa <= borrowRateMaxMantissa, "borrow rate is absurdly high");
-
-        /* Calculate the number of blocks elapsed since the last accrual */
-        uint blockDelta = currentBlockNumber - accrualBlockNumberPrior;
-
-        /*
-         * Calculate the interest accumulated into borrows and reserves and the new index:
-         *  simpleInterestFactor = borrowRate * blockDelta
-         *  interestAccumulated = simpleInterestFactor * totalBorrows
-         *  totalBorrowsNew = interestAccumulated + totalBorrows
-         *  totalReservesNew = interestAccumulated * reserveFactor + totalReserves
-         *  borrowIndexNew = simpleInterestFactor * borrowIndex + borrowIndex
-         */
-
-        Exp memory simpleInterestFactor = mul_(Exp({ mantissa: borrowRateMantissa }), blockDelta);
-        uint interestAccumulated = mul_ScalarTruncate(simpleInterestFactor, borrowsPrior);
-        uint totalBorrowsNew = interestAccumulated + borrowsPrior;
-        uint totalReservesNew = mul_ScalarTruncateAddUInt(
-            Exp({ mantissa: reserveFactorMantissa }),
-            interestAccumulated,
-            reservesPrior
-        );
-        uint borrowIndexNew = mul_ScalarTruncateAddUInt(
-            simpleInterestFactor,
-            borrowIndexPrior,
-            borrowIndexPrior
-        );
-
-        /////////////////////////
-        // EFFECTS & INTERACTIONS
-        // (No safe failures beyond this point)
-
-        /* We write the previously calculated values into storage */
-        accrualBlockNumber = currentBlockNumber;
-        borrowIndex = borrowIndexNew;
-        totalBorrows = totalBorrowsNew;
-        totalReserves = totalReservesNew;
-
-        /* We emit an AccrueInterest event */
-        emit AccrueInterest(cashPrior, interestAccumulated, borrowIndexNew, totalBorrowsNew);
-
-        return NO_ERROR;
     }
 
     /**
@@ -444,11 +556,11 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         /* Verify market's block number equals current block number */
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert MintFreshnessCheck();
         }
 
-        Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
+        Exp memory exchangeRate = Exp({ mantissa: _exchangeRateStoredInternal() });
 
         /////////////////////////
         // EFFECTS & INTERACTIONS
@@ -525,13 +637,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         uint redeemTokensIn,
         uint redeemAmountIn
     ) internal {
-        require(
-            redeemTokensIn == 0 || redeemAmountIn == 0,
-            "one of redeemTokensIn or redeemAmountIn must be zero"
-        );
+        if (redeemTokensIn != 0 && redeemAmountIn != 0) {
+            revert RedeemTokensOrUnderlyingsMustBeZero();
+        }
 
         /* exchangeRate = invoke Exchange Rate Stored() */
-        Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
+        Exp memory exchangeRate = Exp({ mantissa: _exchangeRateStoredInternal() });
 
         uint redeemTokens;
         uint redeemAmount;
@@ -561,7 +672,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         /* Verify market's block number equals current block number */
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert RedeemFreshnessCheck();
         }
 
@@ -619,7 +730,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         /* Verify market's block number equals current block number */
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert BorrowFreshnessCheck();
         }
 
@@ -701,7 +812,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         /* Verify market's block number equals current block number */
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert RepayBorrowFreshnessCheck();
         }
 
@@ -757,12 +868,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
     ) internal nonReentrant {
         accrueInterest();
 
-        uint error = ClTokenInterface(clTokenCollateral).accrueInterest();
-        if (error != NO_ERROR) {
-            // accrueInterest emits logs on errors,
-            // but we still want to log the fact that an attempted liquidation failed
-            revert LiquidateAccrueCollateralInterestFailed(error);
-        }
+        IClToken(clTokenCollateral).accrueInterest();
 
         // liquidateBorrowFresh emits borrow-specific logs on errors, so we don't need to
         liquidateBorrowFresh(msg.sender, borrower, repayAmount, clTokenCollateral);
@@ -795,12 +901,12 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         /* Verify market's block number equals current block number */
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert LiquidateFreshnessCheck();
         }
 
         /* Verify clTokenCollateral market's block number equals current block number */
-        if (ClTokenInterface(clTokenCollateral).accrualBlockNumber() != getBlockNumber()) {
+        if (IClToken(clTokenCollateral).accrualBlockNumber() != _getBlockNumber()) {
             revert LiquidateCollateralFreshnessCheck();
         }
 
@@ -826,28 +932,23 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         // EFFECTS & INTERACTIONS
         // (No safe failures beyond this point)
 
-        /* We calculate the number of collateral tokens that will be seized */
-        (uint amountSeizeError, uint seizeTokens) = comptroller.liquidateCalculateSeizeTokens(
+        // We calculate the number of collateral tokens that will be seized
+        uint seizeTokens = comptroller.liquidateCalculateSeizeTokens(
             address(this),
             clTokenCollateral,
             actualRepayAmount
         );
-        require(
-            amountSeizeError == NO_ERROR,
-            "LIQUIDATE_COMPTROLLER_CALCULATE_AMOUNT_SEIZE_FAILED"
-        );
 
-        /* Revert if borrower collateral token balance < seizeTokens */
-        require(ClTokenInterface(clTokenCollateral).balanceOf(borrower) >= seizeTokens, "LIQUIDATE_SEIZE_TOO_MUCH");
+        // Revert if borrower collateral token balance < seizeTokens
+        if(IClToken(clTokenCollateral).balanceOf(borrower) < seizeTokens) {
+            revert LiquidateSeizeTooMuch();
+        }
 
         // If this is also the collateral, run seizeInternal to avoid re-entrancy, otherwise make an external call
         if (clTokenCollateral == address(this)) {
             seizeInternal(address(this), liquidator, borrower, seizeTokens);
         } else {
-            require(
-                ClTokenInterface(clTokenCollateral).seize(liquidator, borrower, seizeTokens) == NO_ERROR,
-                "token seizure failed"
-            );
+            IClToken(clTokenCollateral).seize(liquidator, borrower, seizeTokens);
         }
 
         /* We emit a LiquidateBorrow event */
@@ -858,25 +959,6 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
             clTokenCollateral,
             seizeTokens
         );
-    }
-
-    /**
-     * @notice Transfers collateral tokens (this market) to the liquidator.
-     * @dev Will fail unless called by another clToken during the process of liquidation.
-     *  Its absolutely critical to use msg.sender as the borrowed clToken and not a parameter.
-     * @param liquidator The account receiving seized collateral
-     * @param borrower The account having collateral seized
-     * @param seizeTokens The number of clTokens to seize
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function seize(
-        address liquidator,
-        address borrower,
-        uint seizeTokens
-    ) external override nonReentrant returns (uint) {
-        seizeInternal(msg.sender, liquidator, borrower, seizeTokens);
-
-        return NO_ERROR;
     }
 
     /**
@@ -918,7 +1000,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
          */
         uint protocolSeizeTokens = mul_(seizeTokens, Exp({ mantissa: protocolSeizeShareMantissa }));
         uint liquidatorSeizeTokens = seizeTokens - protocolSeizeTokens;
-        Exp memory exchangeRate = Exp({ mantissa: exchangeRateStoredInternal() });
+        Exp memory exchangeRate = Exp({ mantissa: _exchangeRateStoredInternal() });
         uint protocolSeizeAmount = mul_ScalarTruncate(exchangeRate, protocolSeizeTokens);
         uint totalReservesNew = totalReserves + protocolSeizeAmount;
 
@@ -938,109 +1020,18 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         emit ReservesAdded(address(this), protocolSeizeAmount, totalReservesNew);
     }
 
-    /*** Admin Functions ***/
-
-    /**
-     * @notice Begins transfer of admin rights. The newPendingAdmin must call `_acceptAdmin` to finalize the transfer.
-     * @dev Admin function to begin change of admin. The newPendingAdmin must call `_acceptAdmin`
-     * to finalize the transfer.
-     * @param _newPendingAdmin New pending admin.
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function setPendingAdmin(address payable _newPendingAdmin) external override returns (uint) {
-        // Check caller = admin
-        if (msg.sender != admin) {
-            revert SetPendingAdminOwnerCheck();
-        }
-
-        // Save current value, if any, for inclusion in log
-        address oldPendingAdmin = pendingAdmin;
-
-        // Store pendingAdmin with value newPendingAdmin
-        pendingAdmin = _newPendingAdmin;
-
-        // Emit NewPendingAdmin(oldPendingAdmin, newPendingAdmin)
-        emit NewPendingAdmin(oldPendingAdmin, _newPendingAdmin);
-
-        return NO_ERROR;
-    }
-
-    /**
-     * @notice Accepts transfer of admin rights. msg.sender must be pendingAdmin
-     * @dev Admin function for pending admin to accept role and update admin
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function acceptAdmin() external override returns (uint) {
-        // Check caller is pendingAdmin and pendingAdmin ≠ address(0)
-        if (msg.sender != pendingAdmin || msg.sender == address(0)) {
-            revert AcceptAdminPendingAdminCheck();
-        }
-
-        // Save current values for inclusion in log
-        address oldAdmin = admin;
-        address oldPendingAdmin = pendingAdmin;
-
-        // Store admin with value pendingAdmin
-        admin = pendingAdmin;
-
-        // Clear the pending value
-        pendingAdmin = payable(address(0));
-
-        emit NewAdmin(oldAdmin, admin);
-        emit NewPendingAdmin(oldPendingAdmin, pendingAdmin);
-
-        return NO_ERROR;
-    }
-
-    /**
-     * @notice Sets a new comptroller for the market
-     * @dev Admin function to set a new comptroller
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function setComptroller(ComptrollerInterface _newComptroller) public override returns (uint) {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            revert SetComptrollerOwnerCheck();
-        }
-
-        ComptrollerInterface oldComptroller = comptroller;
-        // Ensure invoke comptroller.isComptroller() returns true
-        require(_newComptroller.isComptroller(), "marker method returned false");
-
-        // Set market's comptroller to newComptroller
-        comptroller = _newComptroller;
-
-        emit NewComptroller(oldComptroller, _newComptroller);
-
-        return NO_ERROR;
-    }
-
-    /**
-     * @notice accrues interest and sets a new reserve factor for the protocol using _setReserveFactorFresh
-     * @dev Admin function to accrue interest and set a new reserve factor
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function setReserveFactor(
-        uint _newReserveFactorMantissa
-    ) external override nonReentrant returns (uint) {
-        accrueInterest();
-        // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
-        return _setReserveFactorFresh(_newReserveFactorMantissa);
-    }
-
     /**
      * @notice Sets a new reserve factor for the protocol (*requires fresh interest accrual)
      * @dev Admin function to set a new reserve factor
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setReserveFactorFresh(uint newReserveFactorMantissa) internal returns (uint) {
+    function _setReserveFactorFresh(uint newReserveFactorMantissa) internal {
         // Check caller is admin
         if (msg.sender != admin) {
             revert SetReserveFactorAdminCheck();
         }
 
         // Verify market's block number equals current block number
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert SetReserveFactorFreshCheck();
         }
 
@@ -1053,37 +1044,32 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         reserveFactorMantissa = newReserveFactorMantissa;
 
         emit NewReserveFactor(oldReserveFactorMantissa, newReserveFactorMantissa);
-
-        return NO_ERROR;
     }
 
     /**
      * @notice Accrues interest and reduces reserves by transferring from msg.sender
      * @param addAmount Amount of addition to reserves
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _addReservesInternal(uint addAmount) internal nonReentrant returns (uint) {
+    function _addReservesInternal(uint addAmount) internal nonReentrant {
         accrueInterest();
 
         // _addReservesFresh emits reserve-addition-specific logs on errors, so we don't need to.
         _addReservesFresh(addAmount);
-        return NO_ERROR;
     }
 
     /**
      * @notice Add reserves by transferring from caller
      * @dev Requires fresh interest accrual
      * @param addAmount Amount of addition to reserves
-     * @return (uint, uint) An error code (0=success, otherwise a failure (see ErrorReporter.sol for details))
-     * and the actual amount added, net token fees
+     * @return The actual amount added, net token fees
      */
-    function _addReservesFresh(uint addAmount) internal returns (uint, uint) {
+    function _addReservesFresh(uint addAmount) internal returns (uint) {
         // totalReserves + actualAddAmount
         uint totalReservesNew;
         uint actualAddAmount;
 
         // We fail gracefully unless market's block number equals current block number
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert AddReservesFactorFreshCheck(actualAddAmount);
         }
 
@@ -1109,28 +1095,15 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         /* Emit NewReserves(admin, actualAddAmount, reserves[n+1]) */
         emit ReservesAdded(msg.sender, actualAddAmount, totalReservesNew);
 
-        /* Return (NO_ERROR, actualAddAmount) */
-        return (NO_ERROR, actualAddAmount);
-    }
-
-    /**
-     * @notice Accrues interest and reduces reserves by transferring to admin
-     * @param reduceAmount Amount of reduction to reserves
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function reduceReserves(uint reduceAmount) external override nonReentrant returns (uint) {
-        accrueInterest();
-        // _reduceReservesFresh emits reserve-reduction-specific logs on errors, so we don't need to.
-        return _reduceReservesFresh(reduceAmount);
+        return actualAddAmount;
     }
 
     /**
      * @notice Reduces reserves by transferring to admin
      * @dev Requires fresh interest accrual
      * @param reduceAmount Amount of reduction to reserves
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _reduceReservesFresh(uint reduceAmount) internal returns (uint) {
+    function _reduceReservesFresh(uint reduceAmount) internal {
         // totalReserves - reduceAmount
         uint totalReservesNew;
 
@@ -1140,7 +1113,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         // We fail gracefully unless market's block number equals current block number
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert ReduceReservesFreshCheck();
         }
 
@@ -1167,29 +1140,14 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         doTransferOut(admin, reduceAmount);
 
         emit ReservesReduced(admin, reduceAmount, totalReservesNew);
-
-        return NO_ERROR;
-    }
-
-    /**
-     * @notice accrues interest and updates the interest rate model using _setInterestRateModelFresh
-     * @dev Admin function to accrue interest and update the interest rate model
-     * @param _newInterestRateModel the new interest rate model to use
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
-     */
-    function setInterestRateModel(address _newInterestRateModel) external override returns (uint) {
-        accrueInterest();
-        // _setInterestRateModelFresh emits interest-rate-model-update-specific logs on errors, so we don't need to.
-        return _setInterestRateModelFresh(_newInterestRateModel);
     }
 
     /**
      * @notice updates the interest rate model (*requires fresh interest accrual)
      * @dev Admin function to update the interest rate model
      * @param newInterestRateModel the new interest rate model to use
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function _setInterestRateModelFresh(address newInterestRateModel) internal returns (uint) {
+    function _setInterestRateModelFresh(address newInterestRateModel) internal {
         // Used to store old model for use in the event that is emitted on success
         address oldInterestRateModel;
 
@@ -1199,7 +1157,7 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
         }
 
         // We fail gracefully unless market's block number equals current block number
-        if (accrualBlockNumber != getBlockNumber()) {
+        if (accrualBlockNumber != _getBlockNumber()) {
             revert SetInterestRateModelFreshCheck();
         }
 
@@ -1216,8 +1174,63 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
 
         // Emit NewMarketInterestRateModel(oldInterestRateModel, newInterestRateModel)
         emit NewMarketInterestRateModel(oldInterestRateModel, newInterestRateModel);
+    }
 
-        return NO_ERROR;
+    /**
+     * @dev Function to simply retrieve block number
+     *  This exists mainly for inheriting test contracts to stub this result.
+     */
+    function _getBlockNumber() internal view virtual returns (uint) {
+        return block.number;
+    }
+
+    /**
+     * @notice Return the borrow balance of account based on stored data
+     * @param account The address whose balance should be calculated
+     * @return (error code, the calculated balance or 0 if error code is non-zero)
+     */
+    function borrowBalanceStoredInternal(address account) internal view returns (uint) {
+        /* Get borrowBalance and borrowIndex */
+        BorrowSnapshot storage borrowSnapshot = accountBorrows[account];
+
+        /* If borrowBalance = 0 then borrowIndex is likely also 0.
+         * Rather than failing the calculation with a division by 0, we immediately return 0 in this case.
+         */
+        if (borrowSnapshot.principal == 0) {
+            return 0;
+        }
+
+        /* Calculate new borrow balance using the interest index:
+         *  recentBorrowBalance = borrower.borrowBalance * market.borrowIndex / borrower.borrowIndex
+         */
+        uint principalTimesIndex = borrowSnapshot.principal * borrowIndex;
+        return principalTimesIndex / borrowSnapshot.interestIndex;
+    }
+
+    /**
+     * @notice Calculates the exchange rate from the underlying to the ClToken
+     * @dev This function does not accrue interest before calculating the exchange rate
+     * @return calculated exchange rate scaled by 1e18
+     */
+    function _exchangeRateStoredInternal() internal view virtual returns (uint) {
+        uint _totalSupply = totalSupply;
+        if (_totalSupply == 0) {
+            /*
+             * If there are no tokens minted:
+             *  exchangeRate = initialExchangeRate
+             */
+            return initialExchangeRateMantissa;
+        } else {
+            /*
+             * Otherwise:
+             *  exchangeRate = (totalCash + totalBorrows - totalReserves) / totalSupply
+             */
+            uint totalCash = getCashPrior();
+            uint cashPlusBorrowsMinusReserves = totalCash + totalBorrows - totalReserves;
+            uint exchangeRate = (cashPlusBorrowsMinusReserves * expScale) / _totalSupply;
+
+            return exchangeRate;
+        }
     }
 
     /*** Safe Token ***/
@@ -1243,16 +1256,4 @@ abstract contract ClToken is ClTokenInterface, ExponentialNoError, TokenErrorRep
      * this should not revert in normal conditions.
      */
     function doTransferOut(address payable to, uint amount) internal virtual;
-
-    /*** Reentrancy Guard ***/
-
-    /**
-     * @dev Prevents a contract from calling itself, directly or indirectly.
-     */
-    modifier nonReentrant() {
-        require(_notEntered, "re-entered");
-        _notEntered = false;
-        _;
-        _notEntered = true; // get a gas-refund post-Istanbul
-    }
 }

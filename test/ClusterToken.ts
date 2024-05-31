@@ -11,7 +11,7 @@ describe("Cluster Token", function () {
       // Contracts are deployed using the first signer/account by default
       const [deployer] = await ethers.getSigners();
   
-      const clusterToken = await ethers.deployContract("Cluster", [deployer.address]);
+      const clusterToken = await ethers.deployContract("ClusterToken", [deployer.address]);
   
       return { clusterToken, deployer };
     }
