@@ -2,9 +2,9 @@
 pragma solidity ^0.8.20;
 
 import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
+import "./interfaces/IComptroller.sol";
 import "./base/ClToken.sol";
 import "./tokens/ClusterToken.sol";
-import "./base/ComptrollerInterface.sol";
 import "./ErrorReporter.sol";
 import "./ComptrollerStorage.sol";
 import "./Unitroller.sol";
@@ -15,10 +15,13 @@ import "./Unitroller.sol";
  */
 contract Comptroller is
     ComptrollerV7Storage,
-    ComptrollerInterface,
     ComptrollerErrorReporter,
-    ExponentialNoError
+    ExponentialNoError,
+    IComptroller
 {
+    /// @notice Indicator that this is a Comptroller contract (for inspection)
+    bool public constant isComptroller = true;
+
     /// @notice Emitted when an admin supports a market
     event MarketListed(ClToken clToken);
 

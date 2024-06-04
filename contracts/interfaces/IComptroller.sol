@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
-abstract contract ComptrollerInterface {
+interface IComptroller {
     error ExitMarketGetAccountSnapshotFailed();
     error MintIsPaused();
     error BorrowIsPaused();
@@ -22,14 +22,13 @@ abstract contract ComptrollerInterface {
     error InsufficientClrForGrant();
     error RepayShouldBeLessThanTotalBorrow();
 
-    /// @notice Indicator that this is a Comptroller contract (for inspection)
-    bool public constant isComptroller = true;
+    function isComptroller() external view returns (bool);
 
     /*** Assets You Are In ***/
 
-    function enterMarkets(address[] calldata clTokens) external virtual returns (uint[] memory);
+    function enterMarkets(address[] calldata clTokens) external returns (uint[] memory);
 
-    function exitMarket(address clToken) external virtual returns (uint);
+    function exitMarket(address clToken) external returns (uint);
 
     /*** Policy Hooks ***/
 
@@ -37,42 +36,42 @@ abstract contract ComptrollerInterface {
         address clToken,
         address minter,
         uint mintAmount
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
     function mintVerify(
         address clToken,
         address minter,
         uint mintAmount,
         uint mintTokens
-    ) external virtual;
+    ) external;
 
     function redeemAllowed(
         address clToken,
         address redeemer,
         uint redeemTokens
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
     function redeemVerify(
         address clToken,
         address redeemer,
         uint redeemAmount,
         uint redeemTokens
-    ) external virtual;
+    ) external;
 
     function borrowAllowed(
         address clToken,
         address borrower,
         uint borrowAmount
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
-    function borrowVerify(address clToken, address borrower, uint borrowAmount) external virtual;
+    function borrowVerify(address clToken, address borrower, uint borrowAmount) external;
 
     function repayBorrowAllowed(
         address clToken,
         address payer,
         address borrower,
         uint repayAmount
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
     function repayBorrowVerify(
         address clToken,
@@ -80,7 +79,7 @@ abstract contract ComptrollerInterface {
         address borrower,
         uint repayAmount,
         uint borrowerIndex
-    ) external virtual;
+    ) external;
 
     function liquidateBorrowAllowed(
         address clTokenBorrowed,
@@ -88,7 +87,7 @@ abstract contract ComptrollerInterface {
         address liquidator,
         address borrower,
         uint repayAmount
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
     function liquidateBorrowVerify(
         address clTokenBorrowed,
@@ -97,7 +96,7 @@ abstract contract ComptrollerInterface {
         address borrower,
         uint repayAmount,
         uint seizeTokens
-    ) external virtual;
+    ) external;
 
     function seizeAllowed(
         address clTokenCollateral,
@@ -105,7 +104,7 @@ abstract contract ComptrollerInterface {
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
     function seizeVerify(
         address clTokenCollateral,
@@ -113,21 +112,21 @@ abstract contract ComptrollerInterface {
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) external virtual;
+    ) external;
 
     function transferAllowed(
         address clToken,
         address src,
         address dst,
         uint transferTokens
-    ) external virtual returns (uint);
+    ) external returns (uint);
 
     function transferVerify(
         address clToken,
         address src,
         address dst,
         uint transferTokens
-    ) external virtual;
+    ) external;
 
     /*** Liquidity/Liquidation Calculations ***/
 
@@ -135,5 +134,5 @@ abstract contract ComptrollerInterface {
         address clTokenBorrowed,
         address clTokenCollateral,
         uint repayAmount
-    ) external view virtual returns (uint);
+    ) external view returns (uint);
 }

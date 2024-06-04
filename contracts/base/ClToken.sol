@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./ComptrollerInterface.sol";
+import "../interfaces/IComptroller.sol";
 import "../interfaces/IClToken.sol";
 import "../interfaces/IInterestRateModel.sol";
 import "../ExponentialNoError.sol";
@@ -42,7 +42,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
     address payable public pendingAdmin;
 
     /// @notice Contract which oversees inter-clToken operations
-    ComptrollerInterface public comptroller;
+    IComptroller public comptroller;
 
     /// @notice Model which tells what the current interest rate should be
     address public interestRateModel;
@@ -176,10 +176,10 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
 
         address oldComptroller = address(comptroller);
         // Ensure invoke comptroller.isComptroller() returns true
-        if (!ComptrollerInterface(_newComptroller).isComptroller()) revert NotComptroller();
+        if (!IComptroller(_newComptroller).isComptroller()) revert NotComptroller();
 
         // Set market's comptroller to newComptroller
-        comptroller = ComptrollerInterface(_newComptroller);
+        comptroller = IComptroller(_newComptroller);
 
         emit NewComptroller(oldComptroller, _newComptroller);
     }
