@@ -72,7 +72,7 @@ describe("Comptroller", function () {
             it("Should revert if caller is not admin", async () => {
                 const supportMarketTx = comptroller
                     .connect(user)
-                    ._supportMarket(
+                    .supportMarket(
                         await clErc20.getAddress()
                     );
 
@@ -85,7 +85,7 @@ describe("Comptroller", function () {
                 const marketAddr = await clErc20.getAddress();
                 const supportMarketTx = comptroller
                     .connect(deployer)
-                    ._supportMarket(
+                    .supportMarket(
                         marketAddr
                     );
 
@@ -97,13 +97,13 @@ describe("Comptroller", function () {
             it("Should revert if a market is already listed", async () => {
                 const marketAddr = await clErc20.getAddress();
 
-                await comptroller.connect(deployer)._supportMarket(
+                await comptroller.connect(deployer).supportMarket(
                     marketAddr
                 );
                 
                 const secondTx = comptroller
                     .connect(deployer)
-                    ._supportMarket(
+                    .supportMarket(
                         marketAddr
                     );
 
@@ -137,7 +137,7 @@ describe("Comptroller", function () {
                 const marketAddr = await clErc20.getAddress();
                 const setCollateralTx = comptroller
                     .connect(user)
-                    ._setCollateralFactor(
+                    .setCollateralFactor(
                         marketAddr,
                         newCollateralFactor
                     )
@@ -150,7 +150,7 @@ describe("Comptroller", function () {
                 const marketAddr = await clErc20.getAddress();
                 const setCollateralTx = comptroller
                     .connect(deployer)
-                    ._setCollateralFactor(
+                    .setCollateralFactor(
                         marketAddr,
                         newCollateralFactor
                     )

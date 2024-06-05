@@ -174,7 +174,9 @@ interface IClToken {
 
     /*** View Functions ***/
 
+    function isClToken() external view returns (bool);
     function accrualBlockNumber() external view returns (uint);
+    function borrowIndex() external view returns (uint);
 
     /*** User Interface ***/
 
