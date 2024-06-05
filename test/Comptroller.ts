@@ -117,7 +117,7 @@ describe("Comptroller", function () {
             const newCloseFactor = ethers.parseEther("0.05");
             it("Should revert if caller is not admin", async () => {
                 await expect(
-                    comptroller.connect(user)._setCloseFactor(newCloseFactor)
+                    comptroller.connect(user).setCloseFactor(newCloseFactor)
                 ).to.be.revertedWithCustomError(comptroller, "NotAdmin");
             });
 
@@ -125,7 +125,7 @@ describe("Comptroller", function () {
                 const oldCloseFactor = await comptroller.closeFactorMantissa();
 
                 await expect(
-                    comptroller._setCloseFactor(newCloseFactor)
+                    comptroller.setCloseFactor(newCloseFactor)
                 ).to.emit(comptroller, "NewCloseFactor")
                 .withArgs(oldCloseFactor, newCloseFactor);
             });

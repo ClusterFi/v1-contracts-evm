@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
-import "./base/ClToken.sol";
-
 contract UnitrollerAdminStorage {
     /// @notice Administrator for this contract
     address public admin;
@@ -73,7 +71,7 @@ contract ComptrollerStorage is UnitrollerAdminStorage {
     mapping(address => bool) public borrowGuardianPaused;
 
     /// @notice A list of all markets
-    ClToken[] public allMarkets;
+    address[] public allMarkets;
 
     /// @notice The rate at which the flywheel distributes CLR, per block
     uint public clrRate;

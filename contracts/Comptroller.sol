@@ -4,11 +4,11 @@ pragma solidity ^0.8.20;
 import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IClToken } from "./interfaces/IClToken.sol";
 import { IComptroller} from "./interfaces/IComptroller.sol";
+import { IUnitroller } from "./interfaces/IUnitroller.sol";
 import "./base/ClToken.sol";
 import "./tokens/ClusterToken.sol";
 import "./ErrorReporter.sol";
 import { ComptrollerStorage } from "./ComptrollerStorage.sol";
-import "./Unitroller.sol";
 
 /**
  * @title Cluster's Comptroller Contract
@@ -42,6 +42,362 @@ contract Comptroller is
         admin = msg.sender;
     }
 
+    /**
+     * @notice Set new Comptroller, only called by Unitroller's admin.
+     * @dev Admin function for Unitroller to accept new implementation.
+     */
+    function become(IUnitroller unitroller) public {
+        if (msg.sender != unitroller.admin()) {
+            revert NotUnitrollerAdmin();
+        }
+        unitroller.acceptImplementation();
+    }
+
+    /*** Admin Functions ***/
+
+    /**
+     * @notice Sets a new price oracle for the comptroller
+     * @dev Admin function to set a new price oracle
+     */
+    function setPriceOracle(address _newOracle) public {
+        // Check caller is admin
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        // Track the old oracle for the comptroller
+        address oldOracle = oracle;
+
+        // Set comptroller's oracle to newOracle
+        oracle = _newOracle;
+
+        // Emit NewPriceOracle(oldOracle, newOracle)
+        emit NewPriceOracle(oldOracle, _newOracle);
+    }
+
+    /**
+     * @notice Sets the closeFactor used when liquidating borrows
+     * @dev Admin function to set closeFactor
+     * @param newCloseFactorMantissa New close factor, scaled by 1e18
+     */
+    function setCloseFactor(uint newCloseFactorMantissa) external {
+        // Check caller is admin
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        uint oldCloseFactorMantissa = closeFactorMantissa;
+        closeFactorMantissa = newCloseFactorMantissa;
+        emit NewCloseFactor(oldCloseFactorMantissa, closeFactorMantissa);
+    }
+
+    /**
+     * @notice Sets the collateralFactor for a market
+     * @dev Admin function to set per-market collateralFactor
+     * @param clToken The market to set the factor on
+     * @param newCollateralFactorMantissa The new collateral factor, scaled by 1e18
+     */
+    function setCollateralFactor(
+        address clToken,
+        uint newCollateralFactorMantissa
+    ) external {
+        // Check caller is admin
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        // Verify market is listed
+        Market storage market = markets[clToken];
+        if (!market.isListed) {
+            revert MarketIsNotListed();
+        }
+
+        Exp memory newCollateralFactorExp = Exp({ mantissa: newCollateralFactorMantissa });
+
+        // Check collateral factor <= 0.9
+        Exp memory highLimit = Exp({ mantissa: collateralFactorMaxMantissa });
+        if (lessThanExp(highLimit, newCollateralFactorExp)) {
+            revert InvalidCollateralFactor();
+        }
+
+        // If collateral factor != 0, fail if price == 0
+        if (newCollateralFactorMantissa != 0
+            && IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clToken)) == 0
+        ) {
+            revert SetCollFactorWithoutPrice();
+        }
+
+        // Set market's collateral factor to new collateral factor, remember old value
+        uint oldCollateralFactorMantissa = market.collateralFactorMantissa;
+        market.collateralFactorMantissa = newCollateralFactorMantissa;
+
+        // Emit event with asset, old collateral factor, and new collateral factor
+        emit NewCollateralFactor(
+            clToken,
+            oldCollateralFactorMantissa,
+            newCollateralFactorMantissa
+        );
+    }
+
+    /**
+     * @notice Sets liquidationIncentive
+     * @dev Admin function to set liquidationIncentive
+     * @param newLiquidationIncentiveMantissa New liquidationIncentive scaled by 1e18
+     */
+    function setLiquidationIncentive(
+        uint newLiquidationIncentiveMantissa
+    ) external {
+        // Check caller is admin
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        // Save current value for use in log
+        uint oldLiquidationIncentiveMantissa = liquidationIncentiveMantissa;
+
+        // Set liquidation incentive to new incentive
+        liquidationIncentiveMantissa = newLiquidationIncentiveMantissa;
+
+        // Emit event with old incentive, new incentive
+        emit NewLiquidationIncentive(
+            oldLiquidationIncentiveMantissa,
+            newLiquidationIncentiveMantissa
+        );
+    }
+
+    /**
+     * @notice Add the market to the markets mapping and set it as listed
+     * @dev Admin function to set isListed and add support for the market
+     * @param clToken The address of the market (token) to list
+     */
+    function supportMarket(address clToken) external {
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        if (markets[clToken].isListed) {
+            revert MarketIsAlreadyListed();
+        }
+
+        // Sanity check to make sure its really a ClToken
+        IClToken(clToken).isClToken();
+
+        // Note that isClred is not in active use anymore
+        Market storage newMarket = markets[clToken];
+        newMarket.isListed = true;
+        newMarket.isClred = false;
+        newMarket.collateralFactorMantissa = 0;
+
+        _addMarketInternal(clToken);
+        _initializeMarket(clToken);
+
+        emit MarketListed(clToken);
+    }
+
+    /**
+     * @notice Set the given borrow caps for the given clToken markets.
+     * Borrowing that brings total borrows to or above borrow cap will revert.
+     * @dev Admin or borrowCapGuardian function to set the borrow caps.
+     * A borrow cap of 0 corresponds to unlimited borrowing.
+     * @param clTokens The addresses of the markets (tokens) to change the borrow caps for
+     * @param newBorrowCaps The new borrow cap values in underlying to be set.
+     * A value of 0 corresponds to unlimited borrowing.
+     */
+    function setMarketBorrowCaps(
+        address[] calldata clTokens,
+        uint[] calldata newBorrowCaps
+    ) external {
+        if (msg.sender != admin && msg.sender != borrowCapGuardian) {
+            revert NotAdminOrBorrowCapGuardian();
+        }
+
+        uint numMarkets = clTokens.length;
+        uint numBorrowCaps = newBorrowCaps.length;
+
+        if (numMarkets == 0 || numMarkets != numBorrowCaps) {
+            revert ArrayLengthMismatch();
+        }
+
+        for (uint i = 0; i < numMarkets; i++) {
+            borrowCaps[clTokens[i]] = newBorrowCaps[i];
+            emit NewBorrowCap(clTokens[i], newBorrowCaps[i]);
+        }
+    }
+
+    /**
+     * @notice Admin function to change the Borrow Cap Guardian
+     * @param newBorrowCapGuardian The address of the new Borrow Cap Guardian
+     */
+    function setBorrowCapGuardian(address newBorrowCapGuardian) external {
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        // Save current value for inclusion in log
+        address oldBorrowCapGuardian = borrowCapGuardian;
+
+        // Store borrowCapGuardian with value newBorrowCapGuardian
+        borrowCapGuardian = newBorrowCapGuardian;
+
+        // Emit NewBorrowCapGuardian(OldBorrowCapGuardian, NewBorrowCapGuardian)
+        emit NewBorrowCapGuardian(oldBorrowCapGuardian, newBorrowCapGuardian);
+    }
+
+    /**
+     * @notice Admin function to change the Pause Guardian
+     * @param newPauseGuardian The address of the new Pause Guardian
+     */
+    function setPauseGuardian(address newPauseGuardian) external {
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        // Save current value for inclusion in log
+        address oldPauseGuardian = pauseGuardian;
+
+        // Store pauseGuardian with value newPauseGuardian
+        pauseGuardian = newPauseGuardian;
+
+        // Emit NewPauseGuardian(OldPauseGuardian, NewPauseGuardian)
+        emit NewPauseGuardian(oldPauseGuardian, pauseGuardian);
+    }
+
+    function setMintPaused(address clToken, bool state) external returns (bool) {
+        if (!markets[clToken].isListed) {
+            revert MarketIsNotListed();
+        }
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
+
+        mintGuardianPaused[clToken] = state;
+        emit ActionPaused(clToken, "Mint", state);
+        return state;
+    }
+
+    function setBorrowPaused(address clToken, bool state) external returns (bool) {
+        if (!markets[clToken].isListed) {
+            revert MarketIsNotListed();
+        }
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
+
+        borrowGuardianPaused[clToken] = state;
+        emit ActionPaused(clToken, "Borrow", state);
+        return state;
+    }
+
+    function setTransferPaused(bool state) external returns (bool) {
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
+
+        transferGuardianPaused = state;
+        emit ActionPaused("Transfer", state);
+        return state;
+    }
+
+    function setSeizePaused(bool state) external returns (bool) {
+        if (msg.sender != pauseGuardian && msg.sender != admin) {
+            revert NotAdminOrPauseGuardian();
+        }
+        if (msg.sender != admin && state == false) {
+            revert NotAdmin();
+        }
+
+        seizeGuardianPaused = state;
+        emit ActionPaused("Seize", state);
+        return state;
+    }
+
+    /**
+     * @notice Set the Cluster token address
+     * @param newClrAddress New CLR address
+     */
+    function setClrAddress(address newClrAddress) external {
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+        clrAddress = newClrAddress;
+    }
+
+    /*** Clr Distribution Admin ***/
+
+    /**
+     * @notice Set CLR speed for a single contributor
+     * @param contributor The contributor whose CLR speed to update
+     * @param clrSpeed New CLR speed for contributor
+     */
+    function setContributorClrSpeed(address contributor, uint clrSpeed) public {
+        if (!_adminOrInitializing()) {
+            revert NotAdmin();
+        }
+
+        // note that CLR speed could be set to 0 to halt liquidity rewards for a contributor
+        updateContributorRewards(contributor);
+        if (clrSpeed == 0) {
+            // release storage
+            delete lastContributorBlock[contributor];
+        } else {
+            lastContributorBlock[contributor] = getBlockNumber();
+        }
+        clrContributorSpeeds[contributor] = clrSpeed;
+
+        emit ContributorClrSpeedUpdated(contributor, clrSpeed);
+    }
+
+    /**
+     * @notice Set CLR borrow and supply speeds for the specified markets.
+     * @param clTokens The markets whose CLR speed to update.
+     * @param supplySpeeds New supply-side CLR speed for the corresponding market.
+     * @param borrowSpeeds New borrow-side CLR speed for the corresponding market.
+     */
+    function setClrSpeeds(
+        address[] memory clTokens,
+        uint[] memory supplySpeeds,
+        uint[] memory borrowSpeeds
+    ) public {
+        if (!_adminOrInitializing()) {
+            revert NotAdmin();
+        }
+
+        uint numTokens = clTokens.length;
+        if (numTokens != supplySpeeds.length || numTokens != borrowSpeeds.length) {
+            revert ArrayLengthMismatch();
+        }
+
+        for (uint i = 0; i < numTokens; ++i) {
+            setClrSpeedInternal(clTokens[i], supplySpeeds[i], borrowSpeeds[i]);
+        }
+    }
+
+    /**
+     * @notice Transfer CLR to the recipient
+     * @dev Note: If there is not enough CLR, we do not perform the transfer all.
+     * @param recipient The address of the recipient to transfer CLR to
+     * @param amount The amount of CLR to (possibly) transfer
+     */
+    function grantClr(address recipient, uint amount) public {
+        if (!_adminOrInitializing()) {
+            revert NotAdmin();
+        }
+        uint amountLeft = grantClrInternal(recipient, amount);
+        if (amountLeft > 0) {
+            revert InsufficientClrForGrant();
+        }
+        emit ClrGranted(recipient, amount);
+    }
+
     /*** Assets You Are In ***/
 
     /**
@@ -61,8 +417,8 @@ contract Comptroller is
      * @param clToken The clToken to check
      * @return True if the account is in the asset, otherwise false.
      */
-    function checkMembership(address account, ClToken clToken) external view returns (bool) {
-        return markets[address(clToken)].accountMembership[account];
+    function checkMembership(address account, address clToken) external view returns (bool) {
+        return markets[clToken].accountMembership[account];
     }
 
     /**
@@ -350,7 +706,7 @@ contract Comptroller is
         uint borrowCap = borrowCaps[clToken];
         // Borrow cap of 0 corresponds to unlimited borrowing
         if (borrowCap != 0) {
-            uint totalBorrows = ClToken(clToken).totalBorrows();
+            uint totalBorrows = IClToken(clToken).totalBorrows();
             uint nextTotalBorrows = add_(totalBorrows, borrowAmount);
             if (nextTotalBorrows >= borrowCap) {
                 revert BorrowCapReached();
@@ -372,7 +728,7 @@ contract Comptroller is
         }
 
         // Keep the flywheel moving
-        Exp memory borrowIndex = Exp({ mantissa: ClToken(clToken).borrowIndex() });
+        Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
 
@@ -421,7 +777,7 @@ contract Comptroller is
         }
 
         // Keep the flywheel moving
-        Exp memory borrowIndex = Exp({ mantissa: ClToken(clToken).borrowIndex() });
+        Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
 
@@ -477,10 +833,10 @@ contract Comptroller is
             return uint(Error.MARKET_NOT_LISTED);
         }
 
-        uint borrowBalance = ClToken(clTokenBorrowed).borrowBalanceStored(borrower);
+        uint borrowBalance = IClToken(clTokenBorrowed).borrowBalanceStored(borrower);
 
         /* allow accounts to be liquidated if the market is deprecated */
-        if (isDeprecated(ClToken(clTokenBorrowed))) {
+        if (isDeprecated(clTokenBorrowed)) {
             if (borrowBalance < repayAmount) revert RepayShouldBeLessThanTotalBorrow();
         } else {
             /* The borrower must have shortfall in order to be liquidatable */
@@ -850,7 +1206,7 @@ contract Comptroller is
          *  seizeTokens = seizeAmount / exchangeRate
          *   = actualRepayAmount * (liquidationIncentive * priceBorrowed) / (priceCollateral * exchangeRate)
          */
-        uint exchangeRateMantissa = ClToken(clTokenCollateral).exchangeRateStored(); // Note: reverts on error
+        uint exchangeRateMantissa = IClToken(clTokenCollateral).exchangeRateStored(); // Note: reverts on error
         uint seizeTokens;
         Exp memory numerator;
         Exp memory denominator;
@@ -871,334 +1227,80 @@ contract Comptroller is
         return seizeTokens;
     }
 
-    /*** Admin Functions ***/
+    /*** CLR Distribution ***/
 
     /**
-     * @notice Sets a new price oracle for the comptroller
-     * @dev Admin function to set a new price oracle
-     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
+     * @notice Calculate additional accrued CLR for a contributor since last accrual
+     * @param contributor The address to calculate contributor rewards for
      */
-    function _setPriceOracle(address _newOracle) public returns (uint) {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_PRICE_ORACLE_OWNER_CHECK);
+    function updateContributorRewards(address contributor) public {
+        uint clrSpeed = clrContributorSpeeds[contributor];
+        uint blockNumber = getBlockNumber();
+        uint deltaBlocks = sub_(blockNumber, lastContributorBlock[contributor]);
+        if (deltaBlocks > 0 && clrSpeed > 0) {
+            uint newAccrued = mul_(deltaBlocks, clrSpeed);
+            uint contributorAccrued = add_(clrAccrued[contributor], newAccrued);
+
+            clrAccrued[contributor] = contributorAccrued;
+            lastContributorBlock[contributor] = blockNumber;
         }
-
-        // Track the old oracle for the comptroller
-        address oldOracle = oracle;
-
-        // Set comptroller's oracle to newOracle
-        oracle = _newOracle;
-
-        // Emit NewPriceOracle(oldOracle, newOracle)
-        emit NewPriceOracle(oldOracle, _newOracle);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
-     * @notice Sets the closeFactor used when liquidating borrows
-     * @dev Admin function to set closeFactor
-     * @param newCloseFactorMantissa New close factor, scaled by 1e18
-     * @return uint 0=success, otherwise a failure
+     * @notice Claim all the clr accrued by holder in all markets
+     * @param holder The address to claim CLR for
      */
-    function _setCloseFactor(uint newCloseFactorMantissa) external returns (uint) {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
-
-        uint oldCloseFactorMantissa = closeFactorMantissa;
-        closeFactorMantissa = newCloseFactorMantissa;
-        emit NewCloseFactor(oldCloseFactorMantissa, closeFactorMantissa);
-
-        return uint(Error.NO_ERROR);
+    function claimClr(address holder) public {
+        claimClr(holder, allMarkets);
     }
 
     /**
-     * @notice Sets the collateralFactor for a market
-     * @dev Admin function to set per-market collateralFactor
-     * @param clToken The market to set the factor on
-     * @param newCollateralFactorMantissa The new collateral factor, scaled by 1e18
+     * @notice Claim all the clr accrued by holder in the specified markets
+     * @param holder The address to claim CLR for
+     * @param clTokens The list of markets to claim CLR in
      */
-    function setCollateralFactor(
-        address clToken,
-        uint newCollateralFactorMantissa
-    ) external {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
-
-        // Verify market is listed
-        Market storage market = markets[clToken];
-        if (!market.isListed) {
-            revert MarketIsNotListed();
-        }
-
-        Exp memory newCollateralFactorExp = Exp({ mantissa: newCollateralFactorMantissa });
-
-        // Check collateral factor <= 0.9
-        Exp memory highLimit = Exp({ mantissa: collateralFactorMaxMantissa });
-        if (lessThanExp(highLimit, newCollateralFactorExp)) {
-            revert InvalidCollateralFactor();
-        }
-
-        // If collateral factor != 0, fail if price == 0
-        if (newCollateralFactorMantissa != 0
-            && IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clToken)) == 0
-        ) {
-            revert SetCollFactorWithoutPrice();
-        }
-
-        // Set market's collateral factor to new collateral factor, remember old value
-        uint oldCollateralFactorMantissa = market.collateralFactorMantissa;
-        market.collateralFactorMantissa = newCollateralFactorMantissa;
-
-        // Emit event with asset, old collateral factor, and new collateral factor
-        emit NewCollateralFactor(
-            clToken,
-            oldCollateralFactorMantissa,
-            newCollateralFactorMantissa
-        );
+    function claimClr(address holder, address[] memory clTokens) public {
+        address[] memory holders = new address[](1);
+        holders[0] = holder;
+        claimClr(holders, clTokens, true, true);
     }
 
     /**
-     * @notice Sets liquidationIncentive
-     * @dev Admin function to set liquidationIncentive
-     * @param newLiquidationIncentiveMantissa New liquidationIncentive scaled by 1e18
-     * @return uint 0=success, otherwise a failure. (See ErrorReporter for details)
+     * @notice Claim all clr accrued by the holders
+     * @param holders The addresses to claim CLR for
+     * @param clTokens The list of markets to claim CLR in
+     * @param borrowers Whether or not to claim CLR earned by borrowing
+     * @param suppliers Whether or not to claim CLR earned by supplying
      */
-    function _setLiquidationIncentive(
-        uint newLiquidationIncentiveMantissa
-    ) external returns (uint) {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_LIQUIDATION_INCENTIVE_OWNER_CHECK);
-        }
-
-        // Save current value for use in log
-        uint oldLiquidationIncentiveMantissa = liquidationIncentiveMantissa;
-
-        // Set liquidation incentive to new incentive
-        liquidationIncentiveMantissa = newLiquidationIncentiveMantissa;
-
-        // Emit event with old incentive, new incentive
-        emit NewLiquidationIncentive(
-            oldLiquidationIncentiveMantissa,
-            newLiquidationIncentiveMantissa
-        );
-
-        return uint(Error.NO_ERROR);
-    }
-
-    /**
-     * @notice Add the market to the markets mapping and set it as listed
-     * @dev Admin function to set isListed and add support for the market
-     * @param clToken The address of the market (token) to list
-     */
-    function supportMarket(address clToken) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
-
-        if (markets[clToken].isListed) {
-            revert MarketIsAlreadyListed();
-        }
-
-        // Sanity check to make sure its really a ClToken
-        IClToken(clToken).isClToken();
-
-        // Note that isClred is not in active use anymore
-        Market storage newMarket = markets[clToken];
-        newMarket.isListed = true;
-        newMarket.isClred = false;
-        newMarket.collateralFactorMantissa = 0;
-
-        _addMarketInternal(clToken);
-        _initializeMarket(clToken);
-
-        emit MarketListed(clToken);
-    }
-
-    function _addMarketInternal(address clToken) internal {
-        for (uint i = 0; i < allMarkets.length; i++) {
-            if (allMarkets[i] == ClToken(clToken)) {
-                revert MarketAlreadyAdded();
+    function claimClr(
+        address[] memory holders,
+        address[] memory clTokens,
+        bool borrowers,
+        bool suppliers
+    ) public {
+        for (uint i = 0; i < clTokens.length; i++) {
+            address clToken = clTokens[i];
+            if (!markets[clToken].isListed) {
+                revert MarketIsNotListed();
+            }
+            if (borrowers == true) {
+                Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
+                updateClrBorrowIndex(clToken, borrowIndex);
+                for (uint j = 0; j < holders.length; j++) {
+                    distributeBorrowerClr(clToken, holders[j], borrowIndex);
+                }
+            }
+            if (suppliers == true) {
+                updateClrSupplyIndex(clToken);
+                for (uint j = 0; j < holders.length; j++) {
+                    distributeSupplierClr(clToken, holders[j]);
+                }
             }
         }
-        allMarkets.push(ClToken(clToken));
-    }
-
-    function _initializeMarket(address clToken) internal {
-        uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
-
-        ClrMarketState storage supplyState = clrSupplyState[clToken];
-        ClrMarketState storage borrowState = clrBorrowState[clToken];
-
-        /*
-         * Update market state indices
-         */
-        if (supplyState.index == 0) {
-            // Initialize supply state index with default value
-            supplyState.index = clrInitialIndex;
-        }
-
-        if (borrowState.index == 0) {
-            // Initialize borrow state index with default value
-            borrowState.index = clrInitialIndex;
-        }
-
-        /*
-         * Update market state block numbers
-         */
-        supplyState.block = borrowState.block = blockNumber;
-    }
-
-    /**
-     * @notice Set the given borrow caps for the given clToken markets.
-     * Borrowing that brings total borrows to or above borrow cap will revert.
-     * @dev Admin or borrowCapGuardian function to set the borrow caps.
-     * A borrow cap of 0 corresponds to unlimited borrowing.
-     * @param clTokens The addresses of the markets (tokens) to change the borrow caps for
-     * @param newBorrowCaps The new borrow cap values in underlying to be set.
-     * A value of 0 corresponds to unlimited borrowing.
-     */
-    function setMarketBorrowCaps(
-        address[] calldata clTokens,
-        uint[] calldata newBorrowCaps
-    ) external {
-        if (msg.sender != admin && msg.sender != borrowCapGuardian) {
-            revert NotAdminOrBorrowCapGuardian();
-        }
-
-        uint numMarkets = clTokens.length;
-        uint numBorrowCaps = newBorrowCaps.length;
-
-        if (numMarkets == 0 || numMarkets != numBorrowCaps) {
-            revert ArrayLengthMismatch();
-        }
-
-        for (uint i = 0; i < numMarkets; i++) {
-            borrowCaps[clTokens[i]] = newBorrowCaps[i];
-            emit NewBorrowCap(clTokens[i], newBorrowCaps[i]);
+        for (uint j = 0; j < holders.length; j++) {
+            clrAccrued[holders[j]] = grantClrInternal(holders[j], clrAccrued[holders[j]]);
         }
     }
-
-    /**
-     * @notice Admin function to change the Borrow Cap Guardian
-     * @param newBorrowCapGuardian The address of the new Borrow Cap Guardian
-     */
-    function _setBorrowCapGuardian(address newBorrowCapGuardian) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
-
-        // Save current value for inclusion in log
-        address oldBorrowCapGuardian = borrowCapGuardian;
-
-        // Store borrowCapGuardian with value newBorrowCapGuardian
-        borrowCapGuardian = newBorrowCapGuardian;
-
-        // Emit NewBorrowCapGuardian(OldBorrowCapGuardian, NewBorrowCapGuardian)
-        emit NewBorrowCapGuardian(oldBorrowCapGuardian, newBorrowCapGuardian);
-    }
-
-    /**
-     * @notice Admin function to change the Pause Guardian
-     * @param newPauseGuardian The address of the new Pause Guardian
-     * @return uint 0=success, otherwise a failure. (See enum Error for details)
-     */
-    function _setPauseGuardian(address newPauseGuardian) public returns (uint) {
-        if (msg.sender != admin) {
-            return fail(Error.UNAUTHORIZED, FailureInfo.SET_PAUSE_GUARDIAN_OWNER_CHECK);
-        }
-
-        // Save current value for inclusion in log
-        address oldPauseGuardian = pauseGuardian;
-
-        // Store pauseGuardian with value newPauseGuardian
-        pauseGuardian = newPauseGuardian;
-
-        // Emit NewPauseGuardian(OldPauseGuardian, NewPauseGuardian)
-        emit NewPauseGuardian(oldPauseGuardian, pauseGuardian);
-
-        return uint(Error.NO_ERROR);
-    }
-
-    function _setMintPaused(address clToken, bool state) public returns (bool) {
-        if (!markets[clToken].isListed) {
-            revert MarketIsNotListed();
-        }
-        if (msg.sender != pauseGuardian && msg.sender != admin) {
-            revert NotAdminOrPauseGuardian();
-        }
-        if (msg.sender != admin && state == false) {
-            revert NotAdmin();
-        }
-
-        mintGuardianPaused[clToken] = state;
-        emit ActionPaused(clToken, "Mint", state);
-        return state;
-    }
-
-    function setBorrowPaused(address clToken, bool state) public returns (bool) {
-        if (!markets[clToken].isListed) {
-            revert MarketIsNotListed();
-        }
-        if (msg.sender != pauseGuardian && msg.sender != admin) {
-            revert NotAdminOrPauseGuardian();
-        }
-        if (msg.sender != admin && state == false) {
-            revert NotAdmin();
-        }
-
-        borrowGuardianPaused[clToken] = state;
-        emit ActionPaused(clToken, "Borrow", state);
-        return state;
-    }
-
-    function _setTransferPaused(bool state) public returns (bool) {
-        if (msg.sender != pauseGuardian && msg.sender != admin) {
-            revert NotAdminOrPauseGuardian();
-        }
-        if (msg.sender != admin && state == false) {
-            revert NotAdmin();
-        }
-
-        transferGuardianPaused = state;
-        emit ActionPaused("Transfer", state);
-        return state;
-    }
-
-    function _setSeizePaused(bool state) public returns (bool) {
-        if (msg.sender != pauseGuardian && msg.sender != admin) {
-            revert NotAdminOrPauseGuardian();
-        }
-        if (msg.sender != admin && state == false) {
-            revert NotAdmin();
-        }
-
-        seizeGuardianPaused = state;
-        emit ActionPaused("Seize", state);
-        return state;
-    }
-
-    function _become(Unitroller unitroller) public {
-        if (msg.sender != unitroller.admin()) {
-            revert NotUnitrollerAdmin();
-        }
-        unitroller.acceptImplementation();
-    }
-
-    /**
-     * @notice Checks caller is admin, or this contract is becoming the new implementation
-     */
-    function adminOrInitializing() internal view returns (bool) {
-        return msg.sender == admin || msg.sender == comptrollerImplementation;
-    }
-
-    /*** CLR Distribution ***/
 
     /**
      * @notice Set CLR speed for a single market
@@ -1247,7 +1349,7 @@ contract Comptroller is
         uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
         uint deltaBlocks = sub_(uint(blockNumber), uint(supplyState.block));
         if (deltaBlocks > 0 && supplySpeed > 0) {
-            uint _supplyTokens = ClToken(clToken).totalSupply();
+            uint _supplyTokens = IClToken(clToken).totalSupply();
             uint _clrAccrued = mul_(deltaBlocks, supplySpeed);
             Double memory ratio = _supplyTokens > 0
                 ? fraction(_clrAccrued, _supplyTokens)
@@ -1273,7 +1375,7 @@ contract Comptroller is
         uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
         uint deltaBlocks = sub_(uint(blockNumber), uint(borrowState.block));
         if (deltaBlocks > 0 && borrowSpeed > 0) {
-            uint _borrowAmount = div_(ClToken(clToken).totalBorrows(), marketBorrowIndex);
+            uint _borrowAmount = div_(IClToken(clToken).totalBorrows(), marketBorrowIndex);
             uint _clrAccrued = mul_(deltaBlocks, borrowSpeed);
             Double memory ratio = _borrowAmount > 0
                 ? fraction(_clrAccrued, _borrowAmount)
@@ -1373,79 +1475,6 @@ contract Comptroller is
     }
 
     /**
-     * @notice Calculate additional accrued CLR for a contributor since last accrual
-     * @param contributor The address to calculate contributor rewards for
-     */
-    function updateContributorRewards(address contributor) public {
-        uint clrSpeed = clrContributorSpeeds[contributor];
-        uint blockNumber = getBlockNumber();
-        uint deltaBlocks = sub_(blockNumber, lastContributorBlock[contributor]);
-        if (deltaBlocks > 0 && clrSpeed > 0) {
-            uint newAccrued = mul_(deltaBlocks, clrSpeed);
-            uint contributorAccrued = add_(clrAccrued[contributor], newAccrued);
-
-            clrAccrued[contributor] = contributorAccrued;
-            lastContributorBlock[contributor] = blockNumber;
-        }
-    }
-
-    /**
-     * @notice Claim all the clr accrued by holder in all markets
-     * @param holder The address to claim CLR for
-     */
-    function claimClr(address holder) public {
-        return claimClr(holder, allMarkets);
-    }
-
-    /**
-     * @notice Claim all the clr accrued by holder in the specified markets
-     * @param holder The address to claim CLR for
-     * @param clTokens The list of markets to claim CLR in
-     */
-    function claimClr(address holder, ClToken[] memory clTokens) public {
-        address[] memory holders = new address[](1);
-        holders[0] = holder;
-        claimClr(holders, clTokens, true, true);
-    }
-
-    /**
-     * @notice Claim all clr accrued by the holders
-     * @param holders The addresses to claim CLR for
-     * @param clTokens The list of markets to claim CLR in
-     * @param borrowers Whether or not to claim CLR earned by borrowing
-     * @param suppliers Whether or not to claim CLR earned by supplying
-     */
-    function claimClr(
-        address[] memory holders,
-        ClToken[] memory clTokens,
-        bool borrowers,
-        bool suppliers
-    ) public {
-        for (uint i = 0; i < clTokens.length; i++) {
-            ClToken clToken = clTokens[i];
-            if (!markets[address(clToken)].isListed) {
-                revert MarketIsNotListed();
-            }
-            if (borrowers == true) {
-                Exp memory borrowIndex = Exp({ mantissa: clToken.borrowIndex() });
-                updateClrBorrowIndex(address(clToken), borrowIndex);
-                for (uint j = 0; j < holders.length; j++) {
-                    distributeBorrowerClr(address(clToken), holders[j], borrowIndex);
-                }
-            }
-            if (suppliers == true) {
-                updateClrSupplyIndex(address(clToken));
-                for (uint j = 0; j < holders.length; j++) {
-                    distributeSupplierClr(address(clToken), holders[j]);
-                }
-            }
-        }
-        for (uint j = 0; j < holders.length; j++) {
-            clrAccrued[holders[j]] = grantClrInternal(holders[j], clrAccrued[holders[j]]);
-        }
-    }
-
-    /**
      * @notice Transfer CLR to the user
      * @dev Note: If there is not enough CLR, we do not perform the transfer all.
      * @param user The address of the user to transfer CLR to
@@ -1462,79 +1491,12 @@ contract Comptroller is
         return amount;
     }
 
-    /*** Clr Distribution Admin ***/
-
-    /**
-     * @notice Transfer CLR to the recipient
-     * @dev Note: If there is not enough CLR, we do not perform the transfer all.
-     * @param recipient The address of the recipient to transfer CLR to
-     * @param amount The amount of CLR to (possibly) transfer
-     */
-    function _grantClr(address recipient, uint amount) public {
-        if (!adminOrInitializing()) {
-            revert NotAdmin();
-        }
-        uint amountLeft = grantClrInternal(recipient, amount);
-        if (amountLeft > 0) {
-            revert InsufficientClrForGrant();
-        }
-        emit ClrGranted(recipient, amount);
-    }
-
-    /**
-     * @notice Set CLR borrow and supply speeds for the specified markets.
-     * @param clTokens The markets whose CLR speed to update.
-     * @param supplySpeeds New supply-side CLR speed for the corresponding market.
-     * @param borrowSpeeds New borrow-side CLR speed for the corresponding market.
-     */
-    function setClrSpeeds(
-        address[] memory clTokens,
-        uint[] memory supplySpeeds,
-        uint[] memory borrowSpeeds
-    ) public {
-        if (!adminOrInitializing()) {
-            revert NotAdmin();
-        }
-
-        uint numTokens = clTokens.length;
-        if (numTokens != supplySpeeds.length || numTokens != borrowSpeeds.length) {
-            revert ArrayLengthMismatch();
-        }
-
-        for (uint i = 0; i < numTokens; ++i) {
-            setClrSpeedInternal(clTokens[i], supplySpeeds[i], borrowSpeeds[i]);
-        }
-    }
-
-    /**
-     * @notice Set CLR speed for a single contributor
-     * @param contributor The contributor whose CLR speed to update
-     * @param clrSpeed New CLR speed for contributor
-     */
-    function _setContributorClrSpeed(address contributor, uint clrSpeed) public {
-        if (!adminOrInitializing()) {
-            revert NotAdmin();
-        }
-
-        // note that CLR speed could be set to 0 to halt liquidity rewards for a contributor
-        updateContributorRewards(contributor);
-        if (clrSpeed == 0) {
-            // release storage
-            delete lastContributorBlock[contributor];
-        } else {
-            lastContributorBlock[contributor] = getBlockNumber();
-        }
-        clrContributorSpeeds[contributor] = clrSpeed;
-
-        emit ContributorClrSpeedUpdated(contributor, clrSpeed);
-    }
-
     /**
      * @notice Return all of the markets
      * @dev The automatic getter may be used to access an individual market.
      * @return The list of market addresses
      */
-    function getAllMarkets() public view returns (ClToken[] memory) {
+    function getAllMarkets() public view returns (address[] memory) {
         return allMarkets;
     }
 
@@ -1543,11 +1505,11 @@ contract Comptroller is
      * @dev All borrows in a deprecated clToken market can be immediately liquidated
      * @param clToken The market to check if deprecated
      */
-    function isDeprecated(ClToken clToken) public view returns (bool) {
+    function isDeprecated(address clToken) public view returns (bool) {
         return
-            markets[address(clToken)].collateralFactorMantissa == 0 &&
-            borrowGuardianPaused[address(clToken)] == true &&
-            clToken.reserveFactorMantissa() == 1e18;
+            markets[clToken].collateralFactorMantissa == 0 &&
+            borrowGuardianPaused[clToken] == true &&
+            IClToken(clToken).reserveFactorMantissa() == 1e18;
     }
 
     function getBlockNumber() public view virtual returns (uint) {
@@ -1555,12 +1517,43 @@ contract Comptroller is
     }
 
     /**
-     * @notice Set the Cluster token address
+     * @notice Checks caller is admin, or this contract is becoming the new implementation
      */
-    function setClrAddress(address newClrAddress) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
+    function _adminOrInitializing() internal view returns (bool) {
+        return msg.sender == admin || msg.sender == comptrollerImplementation;
+    }
+
+    function _addMarketInternal(address clToken) internal {
+        for (uint i = 0; i < allMarkets.length; i++) {
+            if (allMarkets[i] == clToken) {
+                revert MarketAlreadyAdded();
+            }
         }
-        clrAddress = newClrAddress;
+        allMarkets.push(clToken);
+    }
+
+    function _initializeMarket(address clToken) internal {
+        uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
+
+        ClrMarketState storage supplyState = clrSupplyState[clToken];
+        ClrMarketState storage borrowState = clrBorrowState[clToken];
+
+        /*
+         * Update market state indices
+         */
+        if (supplyState.index == 0) {
+            // Initialize supply state index with default value
+            supplyState.index = clrInitialIndex;
+        }
+
+        if (borrowState.index == 0) {
+            // Initialize borrow state index with default value
+            borrowState.index = clrInitialIndex;
+        }
+
+        /*
+         * Update market state block numbers
+         */
+        supplyState.block = borrowState.block = blockNumber;
     }
 }

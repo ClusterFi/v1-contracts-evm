@@ -177,6 +177,9 @@ interface IClToken {
     function isClToken() external view returns (bool);
     function accrualBlockNumber() external view returns (uint);
     function borrowIndex() external view returns (uint);
+    function reserveFactorMantissa() external view returns (uint);
+    function totalBorrows() external view returns (uint);
+    function totalSupply() external view returns (uint);
 
     /*** User Interface ***/
 
