@@ -89,8 +89,8 @@ interface IComptroller {
     error MarketAlreadyAdded();
     error NotAdminOrBorrowCapGuardian();
     error ArrayLengthMismatch();
-    error MarketIsNotListed();
-    error MarketIsAlreadyListed();
+    error MarketIsNotListed(address clToken);
+    error MarketIsAlreadyListed(address clToken);
     error NotAdminOrPauseGuardian();
     error NotUnitrollerAdmin();
     error ChangeNotAuthorized();
@@ -98,14 +98,20 @@ interface IComptroller {
     error RepayShouldBeLessThanTotalBorrow();
     error SetCollFactorWithoutPrice();
     error InvalidCollateralFactor();
+    error NonZeroBorrowBalance();
+    error InsufficientLiquidity();
+    error InsufficientShortfall();
+    error ZeroPrice();
+    error TooMuchRepay();
+    error ComptrollerMismatch();
 
     function isComptroller() external view returns (bool);
 
     /*** Assets You Are In ***/
 
-    function enterMarkets(address[] calldata clTokens) external returns (uint[] memory);
+    function enterMarkets(address[] calldata clTokens) external;
 
-    function exitMarket(address clToken) external returns (uint);
+    function exitMarket(address clToken) external;
 
     /*** Policy Hooks ***/
 
@@ -113,7 +119,7 @@ interface IComptroller {
         address clToken,
         address minter,
         uint mintAmount
-    ) external returns (uint);
+    ) external;
 
     function mintVerify(
         address clToken,
@@ -126,7 +132,7 @@ interface IComptroller {
         address clToken,
         address redeemer,
         uint redeemTokens
-    ) external returns (uint);
+    ) external;
 
     function redeemVerify(
         address clToken,
@@ -139,7 +145,7 @@ interface IComptroller {
         address clToken,
         address borrower,
         uint borrowAmount
-    ) external returns (uint);
+    ) external;
 
     function borrowVerify(address clToken, address borrower, uint borrowAmount) external;
 
@@ -148,7 +154,7 @@ interface IComptroller {
         address payer,
         address borrower,
         uint repayAmount
-    ) external returns (uint);
+    ) external;
 
     function repayBorrowVerify(
         address clToken,
@@ -164,7 +170,7 @@ interface IComptroller {
         address liquidator,
         address borrower,
         uint repayAmount
-    ) external returns (uint);
+    ) external;
 
     function liquidateBorrowVerify(
         address clTokenBorrowed,
@@ -181,7 +187,7 @@ interface IComptroller {
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) external returns (uint);
+    ) external;
 
     function seizeVerify(
         address clTokenCollateral,
@@ -196,7 +202,7 @@ interface IComptroller {
         address src,
         address dst,
         uint transferTokens
-    ) external returns (uint);
+    ) external;
 
     function transferVerify(
         address clToken,

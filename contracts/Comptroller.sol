@@ -5,9 +5,8 @@ import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IClToken } from "./interfaces/IClToken.sol";
 import { IComptroller} from "./interfaces/IComptroller.sol";
 import { IUnitroller } from "./interfaces/IUnitroller.sol";
-import "./base/ClToken.sol";
 import "./tokens/ClusterToken.sol";
-import "./ErrorReporter.sol";
+import { ExponentialNoError } from "./ExponentialNoError.sol";
 import { ComptrollerStorage } from "./ComptrollerStorage.sol";
 
 /**
@@ -16,7 +15,6 @@ import { ComptrollerStorage } from "./ComptrollerStorage.sol";
  */
 contract Comptroller is
     ComptrollerStorage,
-    ComptrollerErrorReporter,
     ExponentialNoError,
     IComptroller
 {
@@ -46,11 +44,11 @@ contract Comptroller is
      * @notice Set new Comptroller, only called by Unitroller's admin.
      * @dev Admin function for Unitroller to accept new implementation.
      */
-    function become(IUnitroller unitroller) public {
-        if (msg.sender != unitroller.admin()) {
+    function become(address unitroller) public {
+        if (msg.sender != IUnitroller(unitroller).admin()) {
             revert NotUnitrollerAdmin();
         }
-        unitroller.acceptImplementation();
+        IUnitroller(unitroller).acceptImplementation();
     }
 
     /*** Admin Functions ***/
@@ -109,7 +107,7 @@ contract Comptroller is
         // Verify market is listed
         Market storage market = markets[clToken];
         if (!market.isListed) {
-            revert MarketIsNotListed();
+            revert MarketIsNotListed(clToken);
         }
 
         Exp memory newCollateralFactorExp = Exp({ mantissa: newCollateralFactorMantissa });
@@ -176,7 +174,7 @@ contract Comptroller is
         }
 
         if (markets[clToken].isListed) {
-            revert MarketIsAlreadyListed();
+            revert MarketIsAlreadyListed(clToken);
         }
 
         // Sanity check to make sure its really a ClToken
@@ -218,9 +216,13 @@ contract Comptroller is
             revert ArrayLengthMismatch();
         }
 
-        for (uint i = 0; i < numMarkets; i++) {
+        for (uint i = 0; i < numMarkets;) {
             borrowCaps[clTokens[i]] = newBorrowCaps[i];
             emit NewBorrowCap(clTokens[i], newBorrowCaps[i]);
+
+            unchecked {
+                i++;
+            }
         }
     }
 
@@ -264,7 +266,7 @@ contract Comptroller is
 
     function setMintPaused(address clToken, bool state) external returns (bool) {
         if (!markets[clToken].isListed) {
-            revert MarketIsNotListed();
+            revert MarketIsNotListed(clToken);
         }
         if (msg.sender != pauseGuardian && msg.sender != admin) {
             revert NotAdminOrPauseGuardian();
@@ -280,7 +282,7 @@ contract Comptroller is
 
     function setBorrowPaused(address clToken, bool state) external returns (bool) {
         if (!markets[clToken].isListed) {
-            revert MarketIsNotListed();
+            revert MarketIsNotListed(clToken);
         }
         if (msg.sender != pauseGuardian && msg.sender != admin) {
             revert NotAdminOrPauseGuardian();
@@ -376,8 +378,11 @@ contract Comptroller is
             revert ArrayLengthMismatch();
         }
 
-        for (uint i = 0; i < numTokens; ++i) {
+        for (uint i = 0; i < numTokens;) {
             setClrSpeedInternal(clTokens[i], supplySpeeds[i], borrowSpeeds[i]);
+            unchecked {
+                i++;
+            }
         }
     }
 
@@ -424,37 +429,32 @@ contract Comptroller is
     /**
      * @notice Add assets to be included in account liquidity calculation
      * @param clTokens The list of addresses of the clToken markets to be enabled
-     * @return Success indicator for whether each corresponding market was entered
      */
-    function enterMarkets(address[] memory clTokens) public override returns (uint[] memory) {
+    function enterMarkets(address[] memory clTokens) public {
         uint len = clTokens.length;
 
-        uint[] memory results = new uint[](len);
-        for (uint i = 0; i < len; i++) {
-            results[i] = uint(addToMarketInternal(clTokens[i], msg.sender));
+        for (uint i = 0; i < len;) {
+            addToMarketInternal(clTokens[i], msg.sender);
+            unchecked {
+                i++;
+            }
         }
-
-        return results;
     }
 
     /**
      * @notice Add the market to the borrower's "assets in" for liquidity calculations
      * @param clToken The market to enter
      * @param borrower The address of the account to modify
-     * @return Success indicator for whether the market was entered
      */
-    function addToMarketInternal(address clToken, address borrower) internal returns (Error) {
+    function addToMarketInternal(address clToken, address borrower) internal {
         Market storage marketToJoin = markets[clToken];
 
         if (!marketToJoin.isListed) {
             // market is not listed, cannot join
-            return Error.MARKET_NOT_LISTED;
+            revert MarketIsNotListed(clToken);
         }
 
-        if (marketToJoin.accountMembership[borrower] == true) {
-            // already joined
-            return Error.NO_ERROR;
-        }
+        if (marketToJoin.accountMembership[borrower] == true) return;
 
         // survived the gauntlet, add to list
         // NOTE: we store these somewhat redundantly as a significant optimization
@@ -465,8 +465,6 @@ contract Comptroller is
         accountAssets[borrower].push(clToken);
 
         emit MarketEntered(clToken, borrower);
-
-        return Error.NO_ERROR;
     }
 
     /**
@@ -474,30 +472,24 @@ contract Comptroller is
      * @dev Sender must not have an outstanding borrow balance in the asset,
      *  or be providing necessary collateral for an outstanding borrow.
      * @param clTokenAddress The address of the asset to be removed
-     * @return Whether or not the account successfully exited the market
      */
-    function exitMarket(address clTokenAddress) external override returns (uint) {
+    function exitMarket(address clTokenAddress) external {
         IClToken clToken = IClToken(clTokenAddress);
         /* Get sender tokensHeld and amountOwed underlying from the clToken */
         (uint tokensHeld, uint amountOwed, ) = clToken.getAccountSnapshot(msg.sender);
 
         /* Fail if the sender has a borrow balance */
         if (amountOwed != 0) {
-            return fail(Error.NONZERO_BORROW_BALANCE, FailureInfo.EXIT_MARKET_BALANCE_OWED);
+            revert NonZeroBorrowBalance();
         }
 
         /* Fail if the sender is not permitted to redeem all of their tokens */
-        uint allowed = redeemAllowedInternal(clTokenAddress, msg.sender, tokensHeld);
-        if (allowed != 0) {
-            return failOpaque(Error.REJECTION, FailureInfo.EXIT_MARKET_REJECTION, allowed);
-        }
+        redeemAllowedInternal(clTokenAddress, msg.sender, tokensHeld);
 
         Market storage marketToExit = markets[address(clToken)];
 
         /* Return true if the sender is not already ‘in’ the market */
-        if (!marketToExit.accountMembership[msg.sender]) {
-            return uint(Error.NO_ERROR);
-        }
+        if (!marketToExit.accountMembership[msg.sender]) return;
 
         /* Set clToken account membership to false */
         delete marketToExit.accountMembership[msg.sender];
@@ -523,8 +515,6 @@ contract Comptroller is
         storedList.pop();
 
         emit MarketExited(address(clToken), msg.sender);
-
-        return uint(Error.NO_ERROR);
     }
 
     /*** Policy Hooks ***/
@@ -534,13 +524,12 @@ contract Comptroller is
      * @param clToken The market to verify the mint against
      * @param minter The account which would get the minted tokens
      * @param mintAmount The amount of underlying being supplied to the market in exchange for tokens
-     * @return 0 if the mint is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
     function mintAllowed(
         address clToken,
         address minter,
         uint mintAmount
-    ) external override returns (uint) {
+    ) external {
         // Pausing is a very serious situation - we revert to sound the alarms
         if (mintGuardianPaused[clToken]) {
             revert MintIsPaused();
@@ -550,14 +539,12 @@ contract Comptroller is
         mintAmount;
 
         if (!markets[clToken].isListed) {
-            return uint(Error.MARKET_NOT_LISTED);
+            revert MarketIsNotListed(clToken);
         }
 
         // Keep the flywheel moving
         updateClrSupplyIndex(clToken);
         distributeSupplierClr(clToken, minter);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
@@ -590,54 +577,42 @@ contract Comptroller is
      * @param clToken The market to verify the redeem against
      * @param redeemer The account which would redeem the tokens
      * @param redeemTokens The number of clTokens to exchange for the underlying asset in the market
-     * @return 0 if the redeem is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
     function redeemAllowed(
         address clToken,
         address redeemer,
         uint redeemTokens
-    ) external override returns (uint) {
-        uint allowed = redeemAllowedInternal(clToken, redeemer, redeemTokens);
-        if (allowed != uint(Error.NO_ERROR)) {
-            return allowed;
-        }
+    ) external {
+        redeemAllowedInternal(clToken, redeemer, redeemTokens);
 
         // Keep the flywheel moving
         updateClrSupplyIndex(clToken);
         distributeSupplierClr(clToken, redeemer);
-
-        return uint(Error.NO_ERROR);
     }
 
     function redeemAllowedInternal(
         address clToken,
         address redeemer,
         uint redeemTokens
-    ) internal view returns (uint) {
+    ) internal view {
         if (!markets[clToken].isListed) {
-            return uint(Error.MARKET_NOT_LISTED);
+            revert MarketIsNotListed(clToken);
         }
 
         /* If the redeemer is not 'in' the market, then we can bypass the liquidity check */
-        if (!markets[clToken].accountMembership[redeemer]) {
-            return uint(Error.NO_ERROR);
-        }
+        if (!markets[clToken].accountMembership[redeemer]) return;
 
         /* Otherwise, perform a hypothetical liquidity check to guard against shortfall */
-        (Error err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(
+        (, uint shortfall) = getHypotheticalAccountLiquidityInternal(
             redeemer,
             clToken,
             redeemTokens,
             0
         );
-        if (err != Error.NO_ERROR) {
-            return uint(err);
-        }
-        if (shortfall > 0) {
-            return uint(Error.INSUFFICIENT_LIQUIDITY);
-        }
 
-        return uint(Error.NO_ERROR);
+        if (shortfall > 0) {
+            revert InsufficientLiquidity();
+        }
     }
 
     /**
@@ -668,20 +643,19 @@ contract Comptroller is
      * @param clToken The market to verify the borrow against
      * @param borrower The account which would borrow the asset
      * @param borrowAmount The amount of underlying the account would borrow
-     * @return 0 if the borrow is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
     function borrowAllowed(
         address clToken,
         address borrower,
         uint borrowAmount
-    ) external override returns (uint) {
+    ) external {
         // Pausing is a very serious situation - we revert to sound the alarms
         if (borrowGuardianPaused[clToken]) {
             revert BorrowIsPaused();
         }
 
         if (!markets[clToken].isListed) {
-            return uint(Error.MARKET_NOT_LISTED);
+            revert MarketIsNotListed(clToken);
         }
 
         if (!markets[clToken].accountMembership[borrower]) {
@@ -690,17 +664,14 @@ contract Comptroller is
                 revert SenderMustBeClToken();
             }
             // attempt to add borrower to the market
-            Error _err = addToMarketInternal(msg.sender, borrower);
-            if (_err != Error.NO_ERROR) {
-                return uint(_err);
-            }
+            addToMarketInternal(msg.sender, borrower);
 
             // it should be impossible to break the important invariant
             assert(markets[clToken].accountMembership[borrower]);
         }
 
         if (IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clToken)) == 0) {
-            return uint(Error.PRICE_ERROR);
+            revert ZeroPrice();
         }
 
         uint borrowCap = borrowCaps[clToken];
@@ -713,26 +684,21 @@ contract Comptroller is
             }
         }
 
-        (Error err, , uint shortfall) = getHypotheticalAccountLiquidityInternal(
+        ( , uint shortfall) = getHypotheticalAccountLiquidityInternal(
             borrower,
             clToken,
             0,
             borrowAmount
         );
 
-        if (err != Error.NO_ERROR) {
-            return uint(err);
-        }
         if (shortfall > 0) {
-            return uint(Error.INSUFFICIENT_LIQUIDITY);
+            revert InsufficientLiquidity();
         }
 
         // Keep the flywheel moving
         Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
@@ -741,7 +707,7 @@ contract Comptroller is
      * @param borrower The address borrowing the underlying
      * @param borrowAmount The amount of the underlying asset requested to borrow
      */
-    function borrowVerify(address clToken, address borrower, uint borrowAmount) external override {
+    function borrowVerify(address clToken, address borrower, uint borrowAmount) external {
         // Shh - currently unused
         clToken;
         borrower;
@@ -759,29 +725,26 @@ contract Comptroller is
      * @param payer The account which would repay the asset
      * @param borrower The account which would borrowed the asset
      * @param repayAmount The amount of the underlying asset the account would repay
-     * @return 0 if the repay is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
     function repayBorrowAllowed(
         address clToken,
         address payer,
         address borrower,
         uint repayAmount
-    ) external override returns (uint) {
+    ) external {
         // Shh - currently unused
         payer;
         borrower;
         repayAmount;
 
         if (!markets[clToken].isListed) {
-            return uint(Error.MARKET_NOT_LISTED);
+            revert MarketIsNotListed(clToken);
         }
 
         // Keep the flywheel moving
         Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
@@ -825,13 +788,12 @@ contract Comptroller is
         address liquidator,
         address borrower,
         uint repayAmount
-    ) external view override returns (uint) {
+    ) external view {
         // Shh - currently unused
         liquidator;
 
-        if (!markets[clTokenBorrowed].isListed || !markets[clTokenCollateral].isListed) {
-            return uint(Error.MARKET_NOT_LISTED);
-        }
+        if (!markets[clTokenBorrowed].isListed) revert MarketIsNotListed(clTokenBorrowed);
+        if (!markets[clTokenCollateral].isListed) revert MarketIsNotListed(clTokenCollateral);
 
         uint borrowBalance = IClToken(clTokenBorrowed).borrowBalanceStored(borrower);
 
@@ -840,13 +802,10 @@ contract Comptroller is
             if (borrowBalance < repayAmount) revert RepayShouldBeLessThanTotalBorrow();
         } else {
             /* The borrower must have shortfall in order to be liquidatable */
-            (Error err, , uint shortfall) = getAccountLiquidityInternal(borrower);
-            if (err != Error.NO_ERROR) {
-                return uint(err);
-            }
+            ( , uint shortfall) = getAccountLiquidityInternal(borrower);
 
             if (shortfall == 0) {
-                return uint(Error.INSUFFICIENT_SHORTFALL);
+                revert InsufficientShortfall();
             }
 
             /* The liquidator may not repay more than what is allowed by the closeFactor */
@@ -855,10 +814,9 @@ contract Comptroller is
                 borrowBalance
             );
             if (repayAmount > maxClose) {
-                return uint(Error.TOO_MUCH_REPAY);
+                revert TooMuchRepay();
             }
         }
-        return uint(Error.NO_ERROR);
     }
 
     /**
@@ -905,7 +863,7 @@ contract Comptroller is
         address liquidator,
         address borrower,
         uint seizeTokens
-    ) external override returns (uint) {
+    ) external {
         // Pausing is a very serious situation - we revert to sound the alarms
         if (seizeGuardianPaused) {
             revert SeizeIsPaused();
@@ -914,20 +872,17 @@ contract Comptroller is
         // Shh - currently unused
         seizeTokens;
 
-        if (!markets[clTokenCollateral].isListed || !markets[clTokenBorrowed].isListed) {
-            return uint(Error.MARKET_NOT_LISTED);
-        }
+        if (!markets[clTokenCollateral].isListed) revert MarketIsNotListed(clTokenCollateral);
+        if (!markets[clTokenBorrowed].isListed) revert MarketIsNotListed(clTokenBorrowed);
 
-        if (ClToken(clTokenCollateral).comptroller() != ClToken(clTokenBorrowed).comptroller()) {
-            return uint(Error.COMPTROLLER_MISMATCH);
+        if (IClToken(clTokenCollateral).comptroller() != IClToken(clTokenBorrowed).comptroller()) {
+            revert ComptrollerMismatch();
         }
 
         // Keep the flywheel moving
         updateClrSupplyIndex(clTokenCollateral);
         distributeSupplierClr(clTokenCollateral, borrower);
         distributeSupplierClr(clTokenCollateral, liquidator);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
@@ -964,32 +919,26 @@ contract Comptroller is
      * @param src The account which sources the tokens
      * @param dst The account which receives the tokens
      * @param transferTokens The number of clTokens to transfer
-     * @return 0 if the transfer is allowed, otherwise a semi-opaque error code (See ErrorReporter.sol)
      */
     function transferAllowed(
         address clToken,
         address src,
         address dst,
         uint transferTokens
-    ) external override returns (uint) {
+    ) external {
         // Pausing is a very serious situation - we revert to sound the alarms
         if (transferGuardianPaused) {
             revert TransferIsPaused();
         }
 
         // Currently the only consideration is whether or not
-        //  the src is allowed to redeem this many tokens
-        uint allowed = redeemAllowedInternal(clToken, src, transferTokens);
-        if (allowed != uint(Error.NO_ERROR)) {
-            return allowed;
-        }
+        // the src is allowed to redeem this many tokens
+        redeemAllowedInternal(clToken, src, transferTokens);
 
         // Keep the flywheel moving
         updateClrSupplyIndex(clToken);
         distributeSupplierClr(clToken, src);
         distributeSupplierClr(clToken, dst);
-
-        return uint(Error.NO_ERROR);
     }
 
     /**
@@ -1039,19 +988,18 @@ contract Comptroller is
 
     /**
      * @notice Determine the current account liquidity wrt collateral requirements
-     * @return (possible error code (semi-opaque),
-                account liquidity in excess of collateral requirements,
+     * @return (account liquidity in excess of collateral requirements,
      *          account shortfall below collateral requirements)
      */
-    function getAccountLiquidity(address account) public view returns (uint, uint, uint) {
-        (Error err, uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(
+    function getAccountLiquidity(address account) public view returns (uint, uint) {
+        (uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(
             account,
             address(0),
             0,
             0
         );
 
-        return (uint(err), liquidity, shortfall);
+        return (liquidity, shortfall);
     }
 
     /**
@@ -1062,7 +1010,7 @@ contract Comptroller is
      */
     function getAccountLiquidityInternal(
         address account
-    ) internal view returns (Error, uint, uint) {
+    ) internal view returns (uint, uint) {
         return getHypotheticalAccountLiquidityInternal(account, address(0), 0, 0);
     }
 
@@ -1072,8 +1020,7 @@ contract Comptroller is
      * @param account The account to determine liquidity for
      * @param redeemTokens The number of tokens to hypothetically redeem
      * @param borrowAmount The amount of underlying to hypothetically borrow
-     * @return (possible error code (semi-opaque),
-                hypothetical account liquidity in excess of collateral requirements,
+     * @return (hypothetical account liquidity in excess of collateral requirements,
      *          hypothetical account shortfall below collateral requirements)
      */
     function getHypotheticalAccountLiquidity(
@@ -1081,14 +1028,14 @@ contract Comptroller is
         address clTokenModify,
         uint redeemTokens,
         uint borrowAmount
-    ) public view returns (uint, uint, uint) {
-        (Error err, uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(
+    ) public view returns (uint, uint) {
+        (uint liquidity, uint shortfall) = getHypotheticalAccountLiquidityInternal(
             account,
             clTokenModify,
             redeemTokens,
             borrowAmount
         );
-        return (uint(err), liquidity, shortfall);
+        return (liquidity, shortfall);
     }
 
     /**
@@ -1099,8 +1046,7 @@ contract Comptroller is
      * @param borrowAmount The amount of underlying to hypothetically borrow
      * @dev Note that we calculate the exchangeRateStored for each collateral clToken using stored data,
      *  without calculating accumulated interest.
-     * @return (possible error code,
-                hypothetical account liquidity in excess of collateral requirements,
+     * @return (hypothetical account liquidity in excess of collateral requirements,
      *          hypothetical account shortfall below collateral requirements)
      */
     function getHypotheticalAccountLiquidityInternal(
@@ -1108,7 +1054,7 @@ contract Comptroller is
         address clTokenModify,
         uint redeemTokens,
         uint borrowAmount
-    ) internal view returns (Error, uint, uint) {
+    ) internal view returns (uint, uint) {
         AccountLiquidityLocalVars memory vars; // Holds all our calculation results
 
         // For each asset the account is in
@@ -1128,8 +1074,9 @@ contract Comptroller is
             // Get the normalized price of the asset
             vars.oraclePriceMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(address(asset)));
             if (vars.oraclePriceMantissa == 0) {
-                return (Error.PRICE_ERROR, 0, 0);
+                revert ZeroPrice();
             }
+
             vars.oraclePrice = Exp({ mantissa: vars.oraclePriceMantissa });
 
             // Pre-compute a conversion factor from tokens -> ether (normalized price value)
@@ -1174,9 +1121,9 @@ contract Comptroller is
 
         // These are safe, as the underflow condition is checked first
         if (vars.sumCollateral > vars.sumBorrowPlusEffects) {
-            return (Error.NO_ERROR, vars.sumCollateral - vars.sumBorrowPlusEffects, 0);
+            return (vars.sumCollateral - vars.sumBorrowPlusEffects, 0);
         } else {
-            return (Error.NO_ERROR, 0, vars.sumBorrowPlusEffects - vars.sumCollateral);
+            return (0, vars.sumBorrowPlusEffects - vars.sumCollateral);
         }
     }
 
@@ -1281,7 +1228,7 @@ contract Comptroller is
         for (uint i = 0; i < clTokens.length; i++) {
             address clToken = clTokens[i];
             if (!markets[clToken].isListed) {
-                revert MarketIsNotListed();
+                revert MarketIsNotListed(clToken);
             }
             if (borrowers == true) {
                 Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
@@ -1311,7 +1258,7 @@ contract Comptroller is
     function setClrSpeedInternal(address clToken, uint supplySpeed, uint borrowSpeed) internal {
         Market storage market = markets[clToken];
         if (!market.isListed) {
-            revert MarketIsNotListed();
+            revert MarketIsNotListed(clToken);
         }
 
         if (clrSupplySpeeds[clToken] != supplySpeed) {
