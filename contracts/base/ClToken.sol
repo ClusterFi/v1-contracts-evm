@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./ComptrollerInterface.sol";
+import "../interfaces/IComptroller.sol";
 import "../interfaces/IClToken.sol";
 import "../interfaces/IInterestRateModel.sol";
 import "../ExponentialNoError.sol";
@@ -42,7 +42,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
     address payable public pendingAdmin;
 
     /// @notice Contract which oversees inter-clToken operations
-    ComptrollerInterface public comptroller;
+    address public comptroller;
 
     /// @notice Model which tells what the current interest rate should be
     address public interestRateModel;
@@ -174,12 +174,12 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
             revert SetComptrollerOwnerCheck();
         }
 
-        address oldComptroller = address(comptroller);
+        address oldComptroller = comptroller;
         // Ensure invoke comptroller.isComptroller() returns true
-        if (!ComptrollerInterface(_newComptroller).isComptroller()) revert NotComptroller();
+        if (!IComptroller(_newComptroller).isComptroller()) revert NotComptroller();
 
         // Set market's comptroller to newComptroller
-        comptroller = ComptrollerInterface(_newComptroller);
+        comptroller = _newComptroller;
 
         emit NewComptroller(oldComptroller, _newComptroller);
     }
@@ -487,10 +487,12 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         uint tokens
     ) internal returns (bool) {
         /* Fail if transfer not allowed */
-        uint allowed = comptroller.transferAllowed(address(this), src, dst, tokens);
-        if (allowed != 0) {
-            revert TransferComptrollerRejection(allowed);
-        }
+        IComptroller(comptroller).transferAllowed(
+            address(this),
+            src,
+            dst,
+            tokens
+        );
 
         /* Do not allow self-transfers */
         if (src == dst) {
@@ -526,7 +528,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         emit Transfer(src, dst, tokens);
 
         // unused function
-        // comptroller.transferVerify(address(this), src, dst, tokens);
+        // IComptroller(comptroller).transferVerify(address(this), src, dst, tokens);
 
         return true;
     }
@@ -550,10 +552,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
      */
     function mintFresh(address minter, uint mintAmount) internal {
         /* Fail if mint not allowed */
-        uint allowed = comptroller.mintAllowed(address(this), minter, mintAmount);
-        if (allowed != 0) {
-            revert MintComptrollerRejection(allowed);
-        }
+        IComptroller(comptroller).mintAllowed(address(this), minter, mintAmount);
 
         /* Verify market's block number equals current block number */
         if (accrualBlockNumber != _getBlockNumber()) {
@@ -598,7 +597,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
 
         /* We call the defense hook */
         // unused function
-        // comptroller.mintVerify(address(this), minter, actualMintAmount, mintTokens);
+        // IComptroller(comptroller).mintVerify(address(this), minter, actualMintAmount, mintTokens);
     }
 
     /**
@@ -666,10 +665,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         }
 
         /* Fail if redeem not allowed */
-        uint allowed = comptroller.redeemAllowed(address(this), redeemer, redeemTokens);
-        if (allowed != 0) {
-            revert RedeemComptrollerRejection(allowed);
-        }
+        IComptroller(comptroller).redeemAllowed(address(this), redeemer, redeemTokens);
 
         /* Verify market's block number equals current block number */
         if (accrualBlockNumber != _getBlockNumber()) {
@@ -705,7 +701,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         emit Redeem(redeemer, redeemAmount, redeemTokens);
 
         /* We call the defense hook */
-        comptroller.redeemVerify(address(this), redeemer, redeemAmount, redeemTokens);
+        IComptroller(comptroller).redeemVerify(address(this), redeemer, redeemAmount, redeemTokens);
     }
 
     /**
@@ -724,10 +720,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
      */
     function borrowFresh(address payable borrower, uint borrowAmount) internal {
         /* Fail if borrow not allowed */
-        uint allowed = comptroller.borrowAllowed(address(this), borrower, borrowAmount);
-        if (allowed != 0) {
-            revert BorrowComptrollerRejection(allowed);
-        }
+        IComptroller(comptroller).borrowAllowed(address(this), borrower, borrowAmount);
 
         /* Verify market's block number equals current block number */
         if (accrualBlockNumber != _getBlockNumber()) {
@@ -806,10 +799,12 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         uint repayAmount
     ) internal returns (uint) {
         /* Fail if repayBorrow not allowed */
-        uint allowed = comptroller.repayBorrowAllowed(address(this), payer, borrower, repayAmount);
-        if (allowed != 0) {
-            revert RepayBorrowComptrollerRejection(allowed);
-        }
+        IComptroller(comptroller).repayBorrowAllowed(
+            address(this),
+            payer,
+            borrower,
+            repayAmount
+        );
 
         /* Verify market's block number equals current block number */
         if (accrualBlockNumber != _getBlockNumber()) {
@@ -889,16 +884,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         address clTokenCollateral
     ) internal {
         /* Fail if liquidate not allowed */
-        uint allowed = comptroller.liquidateBorrowAllowed(
+        IComptroller(comptroller).liquidateBorrowAllowed(
             address(this),
             clTokenCollateral,
             liquidator,
             borrower,
             repayAmount
         );
-        if (allowed != 0) {
-            revert LiquidateComptrollerRejection(allowed);
-        }
 
         /* Verify market's block number equals current block number */
         if (accrualBlockNumber != _getBlockNumber()) {
@@ -933,7 +925,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         // (No safe failures beyond this point)
 
         // We calculate the number of collateral tokens that will be seized
-        uint seizeTokens = comptroller.liquidateCalculateSeizeTokens(
+        uint seizeTokens = IComptroller(comptroller).liquidateCalculateSeizeTokens(
             address(this),
             clTokenCollateral,
             actualRepayAmount
@@ -977,16 +969,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         uint seizeTokens
     ) internal {
         /* Fail if seize not allowed */
-        uint allowed = comptroller.seizeAllowed(
+        IComptroller(comptroller).seizeAllowed(
             address(this),
             seizerToken,
             liquidator,
             borrower,
             seizeTokens
         );
-        if (allowed != 0) {
-            revert LiquidateSeizeComptrollerRejection(allowed);
-        }
 
         /* Fail if borrower = liquidator */
         if (borrower == liquidator) {

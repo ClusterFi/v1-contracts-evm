@@ -41,7 +41,7 @@ describe("ClToken", function () {
         // set pending comptroller implementation in Unitroller and accept it in Comptroller.
         // only after that, we can pass unitroller into ClErc20 constructor.
         await unitroller.setPendingImplementation(await comptroller.getAddress());
-        await comptroller._become(await unitroller.getAddress());
+        await comptroller.become(await unitroller.getAddress());
 
         const blocksPerYear = 2102400n;
         jumpRateModel = await ethers.deployContract("JumpRateModel", [

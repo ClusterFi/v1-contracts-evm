@@ -85,7 +85,7 @@ contract PriceOracle is IPriceOracle, Ownable {
     /// @dev if the owner sets the price override, this function will
     /// return that instead of the chainlink price
     function _getPrice(IClErc20 _clErc20) internal view returns (uint256 price) {
-        IERC20Metadata token = IERC20Metadata(IClErc20(address(_clErc20)).underlying());
+        IERC20Metadata token = IERC20Metadata(_clErc20.underlying());
 
         if (prices[address(token)] != 0) {
             price = prices[address(token)];

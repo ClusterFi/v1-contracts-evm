@@ -98,7 +98,7 @@ describe("Unitroller", function () {
 
                 const comptrollerBecomeTx = comptroller
                     .connect(deployer)
-                    ._become(unitroller);
+                    .become(unitroller);
 
                 await expect(comptrollerBecomeTx).to.emit(
                     unitroller, "NewImplementation"

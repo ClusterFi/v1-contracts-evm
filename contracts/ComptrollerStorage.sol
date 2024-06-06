@@ -1,58 +1,21 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
-import "./base/ClToken.sol";
-
 contract UnitrollerAdminStorage {
-    /**
-     * @notice Administrator for this contract
-     */
+    /// @notice Administrator for this contract
     address public admin;
 
-    /**
-     * @notice Pending administrator for this contract
-     */
+    /// @notice Pending administrator for this contract
     address public pendingAdmin;
 
-    /**
-     * @notice Active brains of Unitroller
-     */
+    /// @notice Active brains of Unitroller
     address public comptrollerImplementation;
 
-    /**
-     * @notice Pending brains of Unitroller
-     */
+    /// @notice Pending brains of Unitroller
     address public pendingComptrollerImplementation;
 }
 
-contract ComptrollerV1Storage is UnitrollerAdminStorage {
-    /**
-     * @notice Oracle which gives the price of any given asset
-     */
-    address public oracle;
-
-    /**
-     * @notice Multiplier used to calculate the maximum repayAmount when liquidating a borrow
-     */
-    uint public closeFactorMantissa;
-
-    /**
-     * @notice Multiplier representing the discount on collateral that a liquidator receives
-     */
-    uint public liquidationIncentiveMantissa;
-
-    /**
-     * @notice Max number of assets a single account can participate in (borrow or use as collateral)
-     */
-    uint public maxAssets;
-
-    /**
-     * @notice Per-account mapping of "assets you are in", capped by maxAssets
-     */
-    mapping(address => ClToken[]) public accountAssets;
-}
-
-contract ComptrollerV2Storage is ComptrollerV1Storage {
+contract ComptrollerStorage is UnitrollerAdminStorage {
     struct Market {
         // Whether or not this market is listed
         bool isListed;
@@ -65,6 +28,28 @@ contract ComptrollerV2Storage is ComptrollerV1Storage {
         // Whether or not this market receives CLR
         bool isClred;
     }
+
+    struct ClrMarketState {
+        // The market's last updated clrBorrowIndex or clrSupplyIndex
+        uint224 index;
+        // The block number the index was last updated at
+        uint32 block;
+    }
+
+    /// @notice Oracle which gives the price of any given asset
+    address public oracle;
+
+    /// @notice Multiplier used to calculate the maximum repayAmount when liquidating a borrow
+    uint public closeFactorMantissa;
+
+    /// @notice Multiplier representing the discount on collateral that a liquidator receives
+    uint public liquidationIncentiveMantissa;
+
+    /// @notice Max number of assets a single account can participate in (borrow or use as collateral)
+    uint public maxAssets;
+
+    /// @notice Per-account mapping of "assets you are in", capped by maxAssets
+    mapping(address => address[]) public accountAssets;
 
     /**
      * @notice Official mapping of clTokens -> Market metadata
@@ -84,18 +69,9 @@ contract ComptrollerV2Storage is ComptrollerV1Storage {
     bool public seizeGuardianPaused;
     mapping(address => bool) public mintGuardianPaused;
     mapping(address => bool) public borrowGuardianPaused;
-}
-
-contract ComptrollerV3Storage is ComptrollerV2Storage {
-    struct ClrMarketState {
-        // The market's last updated clrBorrowIndex or clrSupplyIndex
-        uint224 index;
-        // The block number the index was last updated at
-        uint32 block;
-    }
 
     /// @notice A list of all markets
-    ClToken[] public allMarkets;
+    address[] public allMarkets;
 
     /// @notice The rate at which the flywheel distributes CLR, per block
     uint public clrRate;
@@ -117,9 +93,7 @@ contract ComptrollerV3Storage is ComptrollerV2Storage {
 
     /// @notice The CLR accrued but not yet transferred to each user
     mapping(address => uint) public clrAccrued;
-}
 
-contract ComptrollerV4Storage is ComptrollerV3Storage {
     /// @notice The borrowCapGuardian can set borrowCaps to any number for any market.
     /// Lowering the borrow cap could disable borrowing on the given market.
     address public borrowCapGuardian;
@@ -127,27 +101,18 @@ contract ComptrollerV4Storage is ComptrollerV3Storage {
     /// @notice Borrow caps enforced by borrowAllowed for each clToken address.
     /// Defaults to zero which corresponds to unlimited borrowing.
     mapping(address => uint) public borrowCaps;
-}
 
-contract ComptrollerV5Storage is ComptrollerV4Storage {
     /// @notice The portion of CLR that each contributor receives per block
     mapping(address => uint) public clrContributorSpeeds;
 
     /// @notice Last block at which a contributor's CLR rewards have been allocated
     mapping(address => uint) public lastContributorBlock;
-}
 
-contract ComptrollerV6Storage is ComptrollerV5Storage {
     /// @notice The rate at which clr is distributed to the corresponding borrow market (per block)
     mapping(address => uint) public clrBorrowSpeeds;
 
     /// @notice The rate at which clr is distributed to the corresponding supply market (per block)
     mapping(address => uint) public clrSupplySpeeds;
-}
-
-contract ComptrollerV7Storage is ComptrollerV6Storage {
-    /// @notice Flag indicating whether the function to fix CLR accruals has been executed (RE: proposal 62 bug)
-    bool public proposal65FixExecuted;
 
     /// @notice Accounting storage mapping account addresses to how much CLR they owe the protocol.
     mapping(address => uint) public clrReceivable;
