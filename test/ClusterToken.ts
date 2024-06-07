@@ -1,50 +1,114 @@
-import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-  
-describe("Cluster Token", function () {
-    const TOTAL_SUPPLY = 10_000_000;
-    // We define a fixture to reuse the same setup in every test.
-    // We use loadFixture to run this setup once, snapshot that state,
-    // and reset Hardhat Network to that snapshot in every test.
-    async function deployClusterTokenFixture() {
-      // Contracts are deployed using the first signer/account by default
-      const [deployer] = await ethers.getSigners();
-  
-      const clusterToken = await ethers.deployContract("ClusterToken", [deployer.address]);
-  
-      return { clusterToken, deployer };
-    }
-  
-    describe("Deployment", function () {
-      it("Should set the right name", async function () {
-        const { clusterToken } = await loadFixture(deployClusterTokenFixture);
-  
-        expect(await clusterToken.name()).to.equal("Cluster");
-      });
-  
-      it("Should set the right symbol", async function () {
-        const { clusterToken } = await loadFixture(deployClusterTokenFixture);
-  
-        expect(await clusterToken.symbol()).to.equal("CLR");
-      });
-  
-      it("Should set the right decimal", async function () {
-        const { clusterToken } = await loadFixture(deployClusterTokenFixture);
-  
-        expect(await clusterToken.decimals()).to.equal(18);
-      });
-  
-      it("Should set the right total supply", async function () {
-        const { clusterToken, deployer } = await loadFixture(deployClusterTokenFixture);
-        
-        const decimals = await clusterToken.decimals();
-        const totalSupplyInDecimals = ethers.parseUnits(TOTAL_SUPPLY.toString(), decimals);
-        
-        expect(await clusterToken.totalSupply()).to.equal(totalSupplyInDecimals);
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { ClusterToken } from "../typechain-types";
 
-        const deployerBalance = await clusterToken.balanceOf(deployer.address);
-        expect(deployerBalance).to.equal(totalSupplyInDecimals);
-      });
+describe("ClusterToken", function () {
+  let clusterToken: ClusterToken;
+
+  let deployer: HardhatEthersSigner;
+  let minter: HardhatEthersSigner;
+  let user: HardhatEthersSigner;
+  
+  beforeEach(async () => {
+    [deployer, minter, user] = await ethers.getSigners();
+
+    clusterToken = await ethers.deployContract("ClusterToken", [deployer.address]);
+  });
+  
+  context("Deployment", () => {
+    it("Should return correct name", async () => {
+      expect(await clusterToken.name()).to.equal("ClusterToken");
     });
+
+    it("Should return correct symbol", async () => {
+        expect(await clusterToken.symbol()).to.equal("CLR");
+    });
+
+    it("Should return correct decimals", async () => {
+        expect(await clusterToken.decimals()).to.equal(18);
+    });
+
+    it("Should return correct owner", async () => {
+      expect(await clusterToken.owner()).to.equal(deployer.address);
+    });
+  });
+
+  context("Initial mint", () => {
+    // Initial supply: 5M
+    const initialSupply = ethers.parseUnits("5000000", 18);
+
+    it("Should revert if caller is not owner", async () => {
+      const initialMintTx = clusterToken
+        .connect(minter)
+        .initialMint(
+          deployer.address,
+          initialSupply
+        );
+
+      await expect(initialMintTx).to.be.revertedWithCustomError(
+        clusterToken, "OwnableUnauthorizedAccount"
+      ).withArgs(minter.address);
+    });
+
+    it("Should be able to call if caller is owner", async () => {
+      await clusterToken.connect(deployer).initialMint(
+        deployer.address,
+        initialSupply
+      );
+
+      expect(await clusterToken.initialMinted()).to.equal(true);
+      expect(await clusterToken.balanceOf(deployer.address)).to.equal(initialSupply);
+    });
+
+    it("Should revert if it is called more than twice", async () => {
+      await clusterToken.connect(deployer).initialMint(
+        deployer.address,
+        initialSupply
+      );
+
+      const secondTx = clusterToken.connect(deployer).initialMint(
+        deployer.address,
+        initialSupply
+      );
+
+      await expect(secondTx).to.be.revertedWithCustomError(
+        clusterToken, "AlreadyInitialMinted"
+      );
+    });
+  });
+
+  context("Mint", () => {
+    const amountToMint = ethers.parseUnits("1000", 18);
+    beforeEach(async () => {
+      // set minter
+      await clusterToken.connect(deployer).setMinter(minter.address);
+    });
+
+    it("Shound revert if caller is not minter", async () => {
+      const mintTx = clusterToken
+        .connect(user)
+        .mint(
+          user.address,
+          amountToMint
+        );
+
+      await expect(mintTx).to.be.revertedWithCustomError(
+        clusterToken, "OnlyMinter"
+      ).withArgs(user.address);
+    });
+
+    it("Shound emit `Minted` event if caller is minter", async () => {
+      const mintTx = clusterToken
+        .connect(minter)
+        .mint(
+          user.address,
+          amountToMint
+        );
+
+      await expect(mintTx).to.emit(
+        clusterToken, "Minted"
+      ).withArgs(minter.address, user.address, amountToMint);
+    });
+  });
 });
