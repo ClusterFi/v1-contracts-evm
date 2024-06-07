@@ -28,11 +28,11 @@ contract ClusterToken is ERC20, ERC20Burnable, ERC20Permit, Ownable {
 
     /**
      * @notice Sets a minter address, only called by an owner.
-     * @param _minter The account to access a minter role.
+     * @param minter_ The account to access a minter role.
      */
-    function setMinter(address _minter) external onlyOwner {
-        if (_minter == address(0)) revert ZeroAddress();
-        minter = _minter;
+    function setMinter(address minter_) external onlyOwner {
+        if (minter_ == address(0)) revert ZeroAddress();
+        minter = minter_;
     }
 
     /**
@@ -49,12 +49,12 @@ contract ClusterToken is ERC20, ERC20Burnable, ERC20Permit, Ownable {
     /**
      * @notice Creates specific amount of tokens and assigns them to `account`.
      * @dev Only called by an account with a minter role.
-     * @param _account The receiver address.
-     * @param _amount The amount to mint.
+     * @param account The receiver address.
+     * @param amount The amount to mint.
      */
-    function mint(address _account, uint256 _amount) external {
+    function mint(address account, uint256 amount) external {
         if (msg.sender != minter) revert OnlyMinter(msg.sender);
-        _mint(_account, _amount);
-        emit Minted(msg.sender, _account, _amount);
+        _mint(account, amount);
+        emit Minted(msg.sender, account, amount);
     }
 }
