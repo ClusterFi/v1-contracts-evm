@@ -26,6 +26,10 @@ contract ClusterToken is ERC20, ERC20Burnable, ERC20Permit, Ownable {
         _mint(initialOwner, 0);
     }
 
+    /**
+     * @notice Sets a minter address, only called by an owner.
+     * @param _minter The account to access a minter role.
+     */
     function setMinter(address _minter) external onlyOwner {
         if (_minter == address(0)) revert ZeroAddress();
         minter = _minter;
