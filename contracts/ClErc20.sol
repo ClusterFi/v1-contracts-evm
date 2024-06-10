@@ -135,7 +135,7 @@ contract ClErc20 is IClErc20, ClToken {
 
     /**
      * @notice A public function to sweep accidental ERC-20 transfers to this contract.
-     * Tokens are sent to admin (timelock)
+     * Tokens are sent to admin
      * @param _token The address of the ERC-20 token to sweep
      */
     function sweepToken(address _token) external override {
