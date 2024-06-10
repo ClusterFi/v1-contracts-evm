@@ -4,6 +4,7 @@ import { ethers } from "hardhat";
 import {
     ClErc20,
     Comptroller,
+    ERC20Mock,
     JumpRateModel,
     Unitroller,
     WstETHMock
@@ -97,6 +98,16 @@ describe("ClToken", function () {
 
         it("Should return correct comptroller address", async () => {
             expect(await clErc20.comptroller()).to.equal(await unitroller.getAddress());
+        });
+
+        it("Should return correct interestRateModel address", async () => {
+            expect(await clErc20.interestRateModel()).to.equal(
+                await jumpRateModel.getAddress()
+            );
+        });
+
+        it("Should return correct underlying asset address", async () => {
+            expect(await clErc20.underlying()).to.equal(await underlyingToken.getAddress());
         });
     });
 
@@ -305,6 +316,58 @@ describe("ClToken", function () {
                 await expect(reduceReservesTx).to.emit(
                     clErc20, "ReservesReduced"
                 ).withArgs(deployer.address, amount, totalReservesNew);
+            });
+        });
+
+        context("Sweep accidental ERC20 transfers", () => {
+            const amountToSweep = ethers.parseUnits("1000", 18);
+            let erc20Mock: ERC20Mock;
+
+            beforeEach(async () => {
+                // Mock accidental ERC20 transfer
+                erc20Mock = await ethers.deployContract("ERC20Mock");
+                await erc20Mock.mint(
+                    await clErc20.getAddress(),
+                    amountToSweep
+                );
+            });
+
+            it("Should revert if caller is not admin", async () => {
+                const sweepTokenTx = clErc20
+                    .connect(account1)
+                    .sweepToken(
+                        await erc20Mock.getAddress()
+                    );
+
+                await expect(sweepTokenTx).to.revertedWithCustomError(
+                    clErc20, "NotAdmin"
+                );
+            });
+
+            it("Should revert if sweep token is underlying", async () => {
+                const sweepTokenTx = clErc20
+                    .connect(deployer)
+                    .sweepToken(
+                        await underlyingToken.getAddress()
+                    );
+
+                await expect(sweepTokenTx).to.revertedWithCustomError(
+                    clErc20, "CanNotSweepUnderlyingToken"
+                );
+            });
+
+            it("Should be able to sweep accidental ERC20 tokens", async () => {
+                await clErc20.connect(deployer).sweepToken(
+                    await erc20Mock.getAddress()
+                );
+
+                expect(
+                    await erc20Mock.balanceOf(await clErc20.getAddress())
+                ).to.equal(0n);
+
+                expect(
+                    await erc20Mock.balanceOf(deployer.address)
+                ).to.equal(amountToSweep);
             });
         });
     });
