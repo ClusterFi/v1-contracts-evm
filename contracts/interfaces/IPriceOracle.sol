@@ -19,6 +19,8 @@ interface IPriceOracle {
     error InvalidUpdatedAt();
     error InvalidFeedAddress();
 
+    function isPriceOracle() external view returns (bool);
+
     /**
      * @notice Gets the underlying price of a clErc20 asset
      * @param _clErc20 The clErc20 to get the underlying price of

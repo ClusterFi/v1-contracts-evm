@@ -54,6 +54,35 @@ contract Comptroller is
     /*** Admin Functions ***/
 
     /**
+     * @notice Add the market to the markets mapping and set it as listed
+     * @dev Admin function to set isListed and add support for the market
+     * @param clToken The address of the market (token) to list
+     */
+    function supportMarket(address clToken) external {
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        if (markets[clToken].isListed) {
+            revert MarketIsAlreadyListed(clToken);
+        }
+
+        // Sanity check to make sure its really a ClToken
+        IClToken(clToken).isClToken();
+
+        // Note that isClred is not in active use anymore
+        Market storage newMarket = markets[clToken];
+        newMarket.isListed = true;
+        newMarket.isClred = false;
+        newMarket.collateralFactorMantissa = 0;
+
+        _addMarketInternal(clToken);
+        _initializeMarket(clToken);
+
+        emit MarketListed(clToken);
+    }
+
+    /**
      * @notice Sets a new price oracle for the comptroller
      * @dev Admin function to set a new price oracle
      */
@@ -62,6 +91,9 @@ contract Comptroller is
         if (msg.sender != admin) {
             revert NotAdmin();
         }
+
+        // Sanity check to make sure its really a PriceOracle
+        IPriceOracle(_newOracle).isPriceOracle();
 
         // Track the old oracle for the comptroller
         address oldOracle = oracle;
@@ -161,35 +193,6 @@ contract Comptroller is
             oldLiquidationIncentiveMantissa,
             newLiquidationIncentiveMantissa
         );
-    }
-
-    /**
-     * @notice Add the market to the markets mapping and set it as listed
-     * @dev Admin function to set isListed and add support for the market
-     * @param clToken The address of the market (token) to list
-     */
-    function supportMarket(address clToken) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
-
-        if (markets[clToken].isListed) {
-            revert MarketIsAlreadyListed(clToken);
-        }
-
-        // Sanity check to make sure its really a ClToken
-        IClToken(clToken).isClToken();
-
-        // Note that isClred is not in active use anymore
-        Market storage newMarket = markets[clToken];
-        newMarket.isListed = true;
-        newMarket.isClred = false;
-        newMarket.collateralFactorMantissa = 0;
-
-        _addMarketInternal(clToken);
-        _initializeMarket(clToken);
-
-        emit MarketListed(clToken);
     }
 
     /**
