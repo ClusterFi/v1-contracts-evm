@@ -279,7 +279,7 @@ contract Comptroller is
         }
 
         mintGuardianPaused[clToken] = state;
-        emit ActionPaused(clToken, "Mint", state);
+        emit MarketActionPaused(clToken, "Mint", state);
         return state;
     }
 
@@ -295,7 +295,7 @@ contract Comptroller is
         }
 
         borrowGuardianPaused[clToken] = state;
-        emit ActionPaused(clToken, "Borrow", state);
+        emit MarketActionPaused(clToken, "Borrow", state);
         return state;
     }
 

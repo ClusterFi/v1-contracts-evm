@@ -3,12 +3,15 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import {
     ClErc20,
+    ClusterToken,
     CompositeChainlinkOracle,
     Comptroller,
     PriceOracle,
     RETHMock,
     WstETHMock
 } from "../typechain-types";
+
+const { parseEther, parseUnits } = ethers;
 
 describe("Comptroller", function () {
     let deployer: HardhatEthersSigner, user: HardhatEthersSigner;
@@ -19,13 +22,14 @@ describe("Comptroller", function () {
     let priceOracle: PriceOracle;
     let wstETHCompositeOracle: CompositeChainlinkOracle;
     let rETHCompositeOracle: CompositeChainlinkOracle;
+    let clusterToken: ClusterToken;
 
-    const baseRatePerYear = ethers.parseEther("0.1");
-    const multiplierPerYear = ethers.parseEther("0.45");
-    const jumpMultiplierPerYear = ethers.parseEther("5");
-    const kink = ethers.parseEther("0.9");
+    const baseRatePerYear = parseEther("0.1");
+    const multiplierPerYear = parseEther("0.45");
+    const jumpMultiplierPerYear = parseEther("5");
+    const kink = parseEther("0.9");
 
-    const initialExchangeRate = ethers.parseEther("1");
+    const initialExchangeRate = parseEther("1");
 
     // Base oracle addresses
     const ETH_USD_FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
@@ -97,6 +101,13 @@ describe("Comptroller", function () {
     
         clWstETHAddr = await clWstETH.getAddress();
         clRETHAddr = await clRETH.getAddress();
+
+        clusterToken = await ethers.deployContract("ClusterToken", [
+            deployer.address
+        ]);
+
+        // Initial mint; 10M CLR tokens
+        await clusterToken.initialMint(deployer.address, parseEther("10000000"));
     });
 
     context("Deployment", () => {
@@ -275,7 +286,7 @@ describe("Comptroller", function () {
                     await wstETHMock.symbol(),
                     await wstETHCompositeOracle.getAddress()
                 );
-                console.log(await wstETHCompositeOracle.latestRoundData());
+
                 const setCollateralTx = comptroller
                     .connect(deployer)
                     .setCollateralFactor(
@@ -315,8 +326,6 @@ describe("Comptroller", function () {
                 .withArgs(0n, newIncentiveMantissa);
             });
         });
-
-        context.skip("Set market borrow caps", () => {});
 
         context("Set borrow cap guardian", () => {
             it("Should revert if caller is not admin", async () => {
@@ -415,7 +424,7 @@ describe("Comptroller", function () {
                 );
             });
 
-            it.skip("Should be able to pause mint by pauseGuardian", async () => {
+            it("Should be able to pause mint action by pauseGuardian", async () => {
                 await comptroller.connect(deployer).setPauseGuardian(user.address);
                 const state = true;
                 const setMintPausedTx = comptroller
@@ -426,11 +435,11 @@ describe("Comptroller", function () {
                     );
 
                 await expect(setMintPausedTx).to.emit(
-                    comptroller, "ActionPaused"
+                    comptroller, "MarketActionPaused"
                 ).withArgs(clWstETHAddr, "Mint", state);
             });
 
-            it.skip("Should be able to pause mint by admin", async () => {
+            it("Should be able to pause mint action by admin", async () => {
                 const state = true;
 
                 const setMintPausedTx = comptroller
@@ -441,11 +450,11 @@ describe("Comptroller", function () {
                     );
 
                 await expect(setMintPausedTx).to.emit(
-                    comptroller, "ActionPaused"
+                    comptroller, "MarketActionPaused"
                 ).withArgs(clWstETHAddr, "Mint", state);
             });
 
-            it.skip("Should be able to unpause mint by admin", async () => {
+            it("Should be able to unpause mint action by admin", async () => {
                 const state = false;
 
                 const setMintPausedTx = comptroller
@@ -456,8 +465,150 @@ describe("Comptroller", function () {
                     );
 
                 await expect(setMintPausedTx).to.emit(
-                    comptroller, "ActionPaused"
+                    comptroller, "MarketActionPaused"
                 ).withArgs(clWstETHAddr, "Mint", state);
+            });
+        });
+
+        // Skip test for borrow paused since it's exactly same as mint paused
+        context.skip("Set borrow paused", () => {});
+
+        context("Set transfer paused", () => {
+            it("Should revert if caller is nether admin nor pauseGuardian", async () => {
+                const setTransferPausedTx = comptroller
+                    .connect(user)
+                    .setTransferPaused(
+                        true
+                    );
+
+                await expect(setTransferPausedTx).to.be.revertedWithCustomError(
+                    comptroller, "NotAdminOrPauseGuardian"
+                );
+            });
+
+            it("Should revert if caller is not admin when state is false", async () => {
+                await comptroller.connect(deployer).setPauseGuardian(user.address);
+                
+                const setTransferPausedTx = comptroller
+                    .connect(user)
+                    .setTransferPaused(
+                        false
+                    );
+
+                await expect(setTransferPausedTx).to.be.revertedWithCustomError(
+                    comptroller, "NotAdmin"
+                );
+            });
+
+            it("Should be able to pause transfer action by pauseGuardian", async () => {
+                await comptroller.connect(deployer).setPauseGuardian(user.address);
+
+                const setTransferPausedTx = comptroller
+                    .connect(user)
+                    .setTransferPaused(
+                        true
+                    );
+
+                await expect(setTransferPausedTx).to.emit(
+                    comptroller, "ActionPaused"
+                ).withArgs("Transfer", true);
+            });
+
+            it("Should be able to unpause transfer action by only admin", async () => {
+                const setTransferPausedTx = comptroller
+                    .connect(deployer)
+                    .setTransferPaused(
+                        false
+                    );
+
+                await expect(setTransferPausedTx).to.emit(
+                    comptroller, "ActionPaused"
+                ).withArgs("Transfer", false);
+            });
+        });
+
+        // Skip test for seize paused since it's exactly same as transfer paused
+        context.skip("Set seize paused", () => {});
+
+        context("Set CLR address", () => {
+            it("Should revert if caller is not admin", async () => {
+                const setClrAddressTx = comptroller
+                    .connect(user)
+                    .setClrAddress(
+                        await clusterToken.getAddress()
+                    );
+
+                await expect(setClrAddressTx).to.be.revertedWithCustomError(
+                    comptroller, "NotAdmin"
+                );
+            });
+
+            it("Should set new CLR address by admin", async () => {
+                await comptroller.connect(deployer).setClrAddress(
+                    await clusterToken.getAddress()
+                );
+
+                expect(await comptroller.clrAddress()).to.equal(
+                    await clusterToken.getAddress()
+                );
+            });
+        });
+
+        context.skip("Set market borrow caps", () => {});
+        context.skip("Set CLR speed for a single contributor", () => {});
+        context.skip("Set CLR borrow and supply speeds for the specified markets", () => {});
+
+        context("Grant CLR", () => {
+            const amountToTransfer = parseEther("1000");
+            beforeEach(async () => {
+                // The CLR Address should be set first.
+                await comptroller.connect(deployer).setClrAddress(
+                    await clusterToken.getAddress()
+                );
+            });
+
+            it("Should revert if caller is neither admin nor new implementation", async () => {
+                const grantClrTx = comptroller
+                    .connect(user)
+                    .grantClr(
+                        user.address,
+                        amountToTransfer
+                    );
+
+                await expect(grantClrTx).to.be.revertedWithCustomError(
+                    comptroller, "NotAdmin"
+                );
+            });
+
+            it("Should revert if there is not enough CLR", async () => {
+                const grantClrTx = comptroller
+                    .connect(deployer)
+                    .grantClr(
+                        user.address,
+                        amountToTransfer
+                    );
+                
+                await expect(grantClrTx).to.be.revertedWithCustomError(
+                    comptroller, "InsufficientClrForGrant"
+                );
+            });
+
+            it("Should transfer CLR to the specific recipient", async () => {
+                await clusterToken.transfer(
+                    await comptroller.getAddress(),
+                    amountToTransfer
+                );
+
+                const grantClrTx = comptroller
+                    .connect(deployer)
+                    .grantClr(
+                        user.address,
+                        amountToTransfer
+                    );
+
+                await expect(grantClrTx).to.emit(
+                    comptroller, "ClrGranted"
+                ).withArgs(user.address, amountToTransfer);
             });
         });
     });
