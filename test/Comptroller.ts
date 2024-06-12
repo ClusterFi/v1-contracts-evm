@@ -1,14 +1,24 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { ClErc20, Comptroller, PriceOracle } from "../typechain-types";
-  
+import {
+    ClErc20,
+    CompositeChainlinkOracle,
+    Comptroller,
+    PriceOracle,
+    RETHMock,
+    WstETHMock
+} from "../typechain-types";
+
 describe("Comptroller", function () {
     let deployer: HardhatEthersSigner, user: HardhatEthersSigner;
     let comptroller: Comptroller;
     let clWstETH: ClErc20, clRETH: ClErc20;
     let clWstETHAddr: string, clRETHAddr: string;
+    let wstETHMock: WstETHMock, rETHMock: RETHMock;
     let priceOracle: PriceOracle;
+    let wstETHCompositeOracle: CompositeChainlinkOracle;
+    let rETHCompositeOracle: CompositeChainlinkOracle;
 
     const baseRatePerYear = ethers.parseEther("0.1");
     const multiplierPerYear = ethers.parseEther("0.45");
@@ -17,6 +27,14 @@ describe("Comptroller", function () {
 
     const initialExchangeRate = ethers.parseEther("1");
 
+    // Base oracle addresses
+    const ETH_USD_FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+    const STETH_USD_FEED = "0xCfE54B5cD566aB89272946F602D76Ea879CAb4a8";
+
+    // Multiplier(Quote) oracle addresses
+    const RETH_ETH_FEED = "0x536218f9E9Eb48863970252233c8F271f554C2d0";
+    const STETHAddr = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
+
     beforeEach(async () => {
         // Contracts are deployed using the first signer/account by default
         [deployer, user] = await ethers.getSigners();
@@ -24,11 +42,11 @@ describe("Comptroller", function () {
         comptroller = await ethers.deployContract("Comptroller");
 
         const stETHMock = await ethers.deployContract("StETHMock");
-        const wstETHMock = await ethers.deployContract("WstETHMock", [
+        wstETHMock = await ethers.deployContract("WstETHMock", [
             await stETHMock.getAddress()
         ]);
 
-        const rETHMock = await ethers.deployContract("RETHMock");
+        rETHMock = await ethers.deployContract("RETHMock");
 
         const blocksPerYear = 2102400n;
         const jumpRateModel = await ethers.deployContract("JumpRateModel", [
@@ -65,6 +83,18 @@ describe("Comptroller", function () {
 
         priceOracle = await ethers.deployContract("PriceOracle");
 
+        wstETHCompositeOracle = await ethers.deployContract("CompositeChainlinkOracle", [
+            STETH_USD_FEED,
+            STETHAddr,
+            ethers.ZeroAddress
+        ]);
+
+        rETHCompositeOracle = await ethers.deployContract("CompositeChainlinkOracle", [
+            ETH_USD_FEED,
+            RETH_ETH_FEED,
+            ethers.ZeroAddress
+        ]);
+    
         clWstETHAddr = await clWstETH.getAddress();
         clRETHAddr = await clRETH.getAddress();
     });
@@ -190,6 +220,11 @@ describe("Comptroller", function () {
             const newCollateralFactor = ethers.parseEther("0.8");
 
             beforeEach(async () => {
+                // Set comptroller price oracle first
+                await comptroller.connect(deployer).setPriceOracle(
+                    await priceOracle.getAddress()
+                );
+
                 await comptroller.connect(deployer).supportMarket(
                     await clWstETH.getAddress()
                 );
@@ -221,7 +256,7 @@ describe("Comptroller", function () {
                 ).withArgs(clRETHAddr);
             });
 
-            it.skip("Should revert if underlying price is zero", async () => {
+            it("Should revert if underlying price is zero", async () => {
                 const setCollateralTx = comptroller
                     .connect(deployer)
                     .setCollateralFactor(
@@ -232,6 +267,25 @@ describe("Comptroller", function () {
                 await expect(setCollateralTx).to.be.revertedWithCustomError(
                     comptroller, "SetCollFactorWithoutPrice"
                 );
+            });
+
+            it("Should be able to set collateral factor successfully", async () => {
+                // set underlying price feed
+                await priceOracle.setFeed(
+                    await wstETHMock.symbol(),
+                    await wstETHCompositeOracle.getAddress()
+                );
+                console.log(await wstETHCompositeOracle.latestRoundData());
+                const setCollateralTx = comptroller
+                    .connect(deployer)
+                    .setCollateralFactor(
+                        clWstETHAddr,
+                        newCollateralFactor
+                    );
+
+                await expect(setCollateralTx).to.emit(
+                    comptroller, "NewCollateralFactor")
+                .withArgs(clWstETHAddr, 0n, newCollateralFactor);
             });
         });
 
