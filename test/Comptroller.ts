@@ -8,6 +8,7 @@ import {
     Comptroller,
     PriceOracle,
     RETHMock,
+    Unitroller,
     WstETHMock
 } from "../typechain-types";
 
@@ -15,6 +16,7 @@ const { parseEther, parseUnits } = ethers;
 
 describe("Comptroller", function () {
     let deployer: HardhatEthersSigner, user: HardhatEthersSigner;
+    let unitroller: Unitroller;
     let comptroller: Comptroller;
     let clWstETH: ClErc20, clRETH: ClErc20;
     let clWstETHAddr: string, clRETHAddr: string;
@@ -42,8 +44,14 @@ describe("Comptroller", function () {
     beforeEach(async () => {
         // Contracts are deployed using the first signer/account by default
         [deployer, user] = await ethers.getSigners();
-        // Comptroller contract instance
+        // Comptroller proxy
+        unitroller = await ethers.deployContract("Unitroller");
+        // Comptroller implementation
         comptroller = await ethers.deployContract("Comptroller");
+        // set pending implementation in Unitroller
+        await unitroller.setPendingImplementation(await comptroller.getAddress());
+        // accept it in Comptroller to become new implementation
+        await comptroller.become(await unitroller.getAddress());
 
         const stETHMock = await ethers.deployContract("StETHMock");
         wstETHMock = await ethers.deployContract("WstETHMock", [
@@ -65,7 +73,7 @@ describe("Comptroller", function () {
         // ClErc20 contract instances
         clWstETH = await ethers.deployContract("ClErc20", [
             await wstETHMock.getAddress(),
-            await comptroller.getAddress(),
+            await unitroller.getAddress(),
             await jumpRateModel.getAddress(),
             initialExchangeRate,
             "Cluster WstETH Token",
@@ -76,7 +84,7 @@ describe("Comptroller", function () {
 
         clRETH = await ethers.deployContract("ClErc20", [
             await rETHMock.getAddress(),
-            await comptroller.getAddress(),
+            await unitroller.getAddress(),
             await jumpRateModel.getAddress(),
             initialExchangeRate,
             "Cluster RETH Token",
