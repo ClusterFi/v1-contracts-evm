@@ -39,7 +39,7 @@ interface IComptroller {
     event ActionPaused(string action, bool pauseState);
 
     /// @notice Emitted when an action is paused on a market
-    event ActionPaused(address indexed clToken, string action, bool pauseState);
+    event MarketActionPaused(address indexed clToken, string action, bool pauseState);
 
     /// @notice Emitted when a new borrow-side CLR speed is calculated for a market
     event ClrBorrowSpeedUpdated(address indexed clToken, uint newSpeed);

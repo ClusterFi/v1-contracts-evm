@@ -89,8 +89,10 @@ contract PriceOracle is IPriceOracle, Ownable {
 
         if (prices[address(token)] != 0) {
             price = prices[address(token)];
-        } else {
+        } else if (address(getFeed(token.symbol())) != address(0)) {
             price = _getChainlinkPrice(getFeed(token.symbol()));
+        } else {
+            price = 0;
         }
 
         uint256 decimalDelta = uint256(18) - uint256(token.decimals());

@@ -4,8 +4,8 @@ pragma solidity ^0.8.20;
 import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IClToken } from "./interfaces/IClToken.sol";
 import { IComptroller} from "./interfaces/IComptroller.sol";
+import { IClusterToken } from "./interfaces/IClusterToken.sol";
 import { IUnitroller } from "./interfaces/IUnitroller.sol";
-import "./tokens/ClusterToken.sol";
 import { ExponentialNoError } from "./ExponentialNoError.sol";
 import { ComptrollerStorage } from "./ComptrollerStorage.sol";
 
@@ -54,6 +54,35 @@ contract Comptroller is
     /*** Admin Functions ***/
 
     /**
+     * @notice Add the market to the markets mapping and set it as listed
+     * @dev Admin function to set isListed and add support for the market
+     * @param clToken The address of the market (token) to list
+     */
+    function supportMarket(address clToken) external {
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
+
+        if (markets[clToken].isListed) {
+            revert MarketIsAlreadyListed(clToken);
+        }
+
+        // Sanity check to make sure its really a ClToken
+        IClToken(clToken).isClToken();
+
+        // Note that isClred is not in active use anymore
+        Market storage newMarket = markets[clToken];
+        newMarket.isListed = true;
+        newMarket.isClred = false;
+        newMarket.collateralFactorMantissa = 0;
+
+        _addMarketInternal(clToken);
+        _initializeMarket(clToken);
+
+        emit MarketListed(clToken);
+    }
+
+    /**
      * @notice Sets a new price oracle for the comptroller
      * @dev Admin function to set a new price oracle
      */
@@ -62,6 +91,9 @@ contract Comptroller is
         if (msg.sender != admin) {
             revert NotAdmin();
         }
+
+        // Sanity check to make sure its really a PriceOracle
+        IPriceOracle(_newOracle).isPriceOracle();
 
         // Track the old oracle for the comptroller
         address oldOracle = oracle;
@@ -164,35 +196,6 @@ contract Comptroller is
     }
 
     /**
-     * @notice Add the market to the markets mapping and set it as listed
-     * @dev Admin function to set isListed and add support for the market
-     * @param clToken The address of the market (token) to list
-     */
-    function supportMarket(address clToken) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
-
-        if (markets[clToken].isListed) {
-            revert MarketIsAlreadyListed(clToken);
-        }
-
-        // Sanity check to make sure its really a ClToken
-        IClToken(clToken).isClToken();
-
-        // Note that isClred is not in active use anymore
-        Market storage newMarket = markets[clToken];
-        newMarket.isListed = true;
-        newMarket.isClred = false;
-        newMarket.collateralFactorMantissa = 0;
-
-        _addMarketInternal(clToken);
-        _initializeMarket(clToken);
-
-        emit MarketListed(clToken);
-    }
-
-    /**
      * @notice Set the given borrow caps for the given clToken markets.
      * Borrowing that brings total borrows to or above borrow cap will revert.
      * @dev Admin or borrowCapGuardian function to set the borrow caps.
@@ -276,7 +279,7 @@ contract Comptroller is
         }
 
         mintGuardianPaused[clToken] = state;
-        emit ActionPaused(clToken, "Mint", state);
+        emit MarketActionPaused(clToken, "Mint", state);
         return state;
     }
 
@@ -292,7 +295,7 @@ contract Comptroller is
         }
 
         borrowGuardianPaused[clToken] = state;
-        emit ActionPaused(clToken, "Borrow", state);
+        emit MarketActionPaused(clToken, "Borrow", state);
         return state;
     }
 
@@ -1429,10 +1432,9 @@ contract Comptroller is
      * @return The amount of CLR which was NOT transferred to the user
      */
     function grantClrInternal(address user, uint amount) internal returns (uint) {
-        ClusterToken clr = ClusterToken(clrAddress);
-        uint clrRemaining = clr.balanceOf(address(this));
+        uint clrRemaining = IClusterToken(clrAddress).balanceOf(address(this));
         if (amount > 0 && amount <= clrRemaining) {
-            clr.transfer(user, amount);
+            IClusterToken(clrAddress).transfer(user, amount);
             return 0;
         }
         return amount;
