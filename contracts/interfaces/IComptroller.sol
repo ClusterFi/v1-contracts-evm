@@ -4,6 +4,12 @@ pragma solidity ^0.8.20;
 interface IComptroller {
     /*** Events ***/
 
+    /// @notice Emitted when pendingAdmin is updated
+    event NewPendingAdmin(address oldPendingAdmin, address newPendingAdmin);
+
+    /// @notice Emitted when pendingAdmin is accepted, which means admin is updated
+    event NewAdmin(address oldAdmin, address newAdmin);
+
     /// @notice Emitted when an admin supports a market
     event MarketListed(address clToken);
 
@@ -41,6 +47,9 @@ interface IComptroller {
     /// @notice Emitted when an action is paused on a market
     event MarketActionPaused(address indexed clToken, string action, bool pauseState);
 
+    /// @notice Emitted when new CLR token address is set.
+    event NewClrAddress(address oldClr, address newClr);
+
     /// @notice Emitted when a new borrow-side CLR speed is calculated for a market
     event ClrBorrowSpeedUpdated(address indexed clToken, uint newSpeed);
 
@@ -77,6 +86,8 @@ interface IComptroller {
 
     /*** Errors ***/
 
+    error ZeroAddress();
+    error NotPendingAdmin();
     error ExitMarketGetAccountSnapshotFailed();
     error MintIsPaused();
     error BorrowIsPaused();

@@ -1,57 +1,88 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.20;
 
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IClToken } from "./interfaces/IClToken.sol";
 import { IComptroller} from "./interfaces/IComptroller.sol";
 import { IClusterToken } from "./interfaces/IClusterToken.sol";
-import { IUnitroller } from "./interfaces/IUnitroller.sol";
 import { ExponentialNoError } from "./ExponentialNoError.sol";
-import { ComptrollerStorage } from "./ComptrollerStorage.sol";
+import { ComptrollerStorage } from "./base/ComptrollerStorage.sol";
 
 /**
  * @title Cluster's Comptroller Contract
  * @author Cluster
  */
 contract Comptroller is
-    ComptrollerStorage,
+    Initializable,
+    IComptroller,
     ExponentialNoError,
-    IComptroller
+    ComptrollerStorage
 {
     /// @notice Indicator that this is a Comptroller contract (for inspection)
     bool public constant isComptroller = true;
 
-    /// @notice CLR token contract address
-    address public clrAddress;
-
     /// @notice The initial CLR index for a market
     uint224 public constant clrInitialIndex = 1e36;
 
-    // closeFactorMantissa must be strictly greater than this value
+    /// @dev closeFactorMantissa must be strictly greater than this value
     uint internal constant closeFactorMinMantissa = 0.05e18; // 0.05
 
-    // closeFactorMantissa must not exceed this value
+    /// @dev closeFactorMantissa must not exceed this value
     uint internal constant closeFactorMaxMantissa = 0.9e18; // 0.9
 
-    // No collateralFactorMantissa may exceed this value
+    /// @dev No collateralFactorMantissa may exceed this value
     uint internal constant collateralFactorMaxMantissa = 0.9e18; // 0.9
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
+        _disableInitializers();
+    }
+
+    function initialize() public initializer {
         admin = msg.sender;
     }
 
+    /*** Admin Functions ***/
+    
     /**
-     * @notice Set new Comptroller, only called by Unitroller's admin.
-     * @dev Admin function for Unitroller to accept new implementation.
+     * @notice Admin function to begin change of admin.
+     * @dev Begins transfer of admin rights. The newPendingAdmin must call `acceptAdmin` to
+     * finalize the transfer.
+     * @param _newPendingAdmin The new pending admin.
      */
-    function become(address unitroller) public {
-        if (msg.sender != IUnitroller(unitroller).admin()) {
-            revert NotUnitrollerAdmin();
-        }
-        IUnitroller(unitroller).acceptImplementation();
+    function setPendingAdmin(address _newPendingAdmin) public {
+        // Check if caller is admin
+        _onlyAdmin();
+        // check if new admin is not zero address
+        if (_newPendingAdmin == address(0)) revert ZeroAddress();
+
+        address _oldPendingAdmin = pendingAdmin;
+
+        pendingAdmin = _newPendingAdmin;
+
+        emit NewPendingAdmin(_oldPendingAdmin, _newPendingAdmin);
     }
 
-    /*** Admin Functions ***/
+    /**
+     * @notice Accepts transfer of admin rights. The caller must be pendingAdmin.
+     * @dev Admin function for pending admin to accept role and update admin.
+     */
+    function acceptAdmin() public {
+        // Check if caller is pendingAdmin
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+
+        address _oldAdmin = admin;
+        address _oldPendingAdmin = pendingAdmin;
+
+        admin = pendingAdmin;
+
+        // Clear the pending value
+        pendingAdmin = address(0);
+
+        emit NewAdmin(_oldAdmin, admin);
+        emit NewPendingAdmin(_oldPendingAdmin, pendingAdmin);
+    }
 
     /**
      * @notice Add the market to the markets mapping and set it as listed
@@ -59,9 +90,7 @@ contract Comptroller is
      * @param clToken The address of the market (token) to list
      */
     function supportMarket(address clToken) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         if (markets[clToken].isListed) {
             revert MarketIsAlreadyListed(clToken);
@@ -88,9 +117,7 @@ contract Comptroller is
      */
     function setPriceOracle(address _newOracle) public {
         // Check caller is admin
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         // Sanity check to make sure its really a PriceOracle
         IPriceOracle(_newOracle).isPriceOracle();
@@ -112,9 +139,7 @@ contract Comptroller is
      */
     function setCloseFactor(uint newCloseFactorMantissa) external {
         // Check caller is admin
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         uint oldCloseFactorMantissa = closeFactorMantissa;
         closeFactorMantissa = newCloseFactorMantissa;
@@ -132,9 +157,7 @@ contract Comptroller is
         uint newCollateralFactorMantissa
     ) external {
         // Check caller is admin
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         // Verify market is listed
         Market storage market = markets[clToken];
@@ -177,10 +200,7 @@ contract Comptroller is
     function setLiquidationIncentive(
         uint newLiquidationIncentiveMantissa
     ) external {
-        // Check caller is admin
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         // Save current value for use in log
         uint oldLiquidationIncentiveMantissa = liquidationIncentiveMantissa;
@@ -234,9 +254,7 @@ contract Comptroller is
      * @param newBorrowCapGuardian The address of the new Borrow Cap Guardian
      */
     function setBorrowCapGuardian(address newBorrowCapGuardian) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         // Save current value for inclusion in log
         address oldBorrowCapGuardian = borrowCapGuardian;
@@ -253,9 +271,7 @@ contract Comptroller is
      * @param newPauseGuardian The address of the new Pause Guardian
      */
     function setPauseGuardian(address newPauseGuardian) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         // Save current value for inclusion in log
         address oldPauseGuardian = pauseGuardian;
@@ -327,13 +343,16 @@ contract Comptroller is
 
     /**
      * @notice Set the Cluster token address
-     * @param newClrAddress New CLR address
+     * @param newClrAddress New CLR token address
      */
     function setClrAddress(address newClrAddress) external {
-        if (msg.sender != admin) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
+
+        address oldClrAddress = clrAddress;
+
         clrAddress = newClrAddress;
+
+        emit NewClrAddress(oldClrAddress, newClrAddress);
     }
 
     /*** Clr Distribution Admin ***/
@@ -344,9 +363,7 @@ contract Comptroller is
      * @param clrSpeed New CLR speed for contributor
      */
     function setContributorClrSpeed(address contributor, uint clrSpeed) public {
-        if (!_adminOrInitializing()) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         // note that CLR speed could be set to 0 to halt liquidity rewards for a contributor
         updateContributorRewards(contributor);
@@ -372,9 +389,7 @@ contract Comptroller is
         uint[] memory supplySpeeds,
         uint[] memory borrowSpeeds
     ) public {
-        if (!_adminOrInitializing()) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
 
         uint numTokens = clTokens.length;
         if (numTokens != supplySpeeds.length || numTokens != borrowSpeeds.length) {
@@ -396,9 +411,8 @@ contract Comptroller is
      * @param amount The amount of CLR to (possibly) transfer
      */
     function grantClr(address recipient, uint amount) public {
-        if (!_adminOrInitializing()) {
-            revert NotAdmin();
-        }
+        _onlyAdmin();
+
         uint amountLeft = grantClrInternal(recipient, amount);
         if (amountLeft > 0) {
             revert InsufficientClrForGrant();
@@ -1465,13 +1479,6 @@ contract Comptroller is
         return block.number;
     }
 
-    /**
-     * @notice Checks caller is admin, or this contract is becoming the new implementation
-     */
-    function _adminOrInitializing() internal view returns (bool) {
-        return msg.sender == admin || msg.sender == comptrollerImplementation;
-    }
-
     function _addMarketInternal(address clToken) internal {
         for (uint i = 0; i < allMarkets.length; i++) {
             if (allMarkets[i] == clToken) {
@@ -1504,5 +1511,10 @@ contract Comptroller is
          * Update market state block numbers
          */
         supplyState.block = borrowState.block = blockNumber;
+    }
+
+    /// @dev Checks if caller is admin
+    function _onlyAdmin() internal view {
+        if (msg.sender != admin) revert NotAdmin();
     }
 }
