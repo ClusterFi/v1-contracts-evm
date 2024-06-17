@@ -1,14 +1,12 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import {
     ClErc20,
     ClusterToken,
     CompositeChainlinkOracle,
-    Comptroller,
     PriceOracle,
     RETHMock,
-    Unitroller,
     WstETHMock
 } from "../typechain-types";
 
@@ -16,8 +14,7 @@ const { parseEther, parseUnits } = ethers;
 
 describe("Comptroller", function () {
     let deployer: HardhatEthersSigner, user: HardhatEthersSigner;
-    let unitroller: Unitroller;
-    let comptroller: Comptroller;
+    let comptroller: any;
     let clWstETH: ClErc20, clRETH: ClErc20;
     let clWstETHAddr: string, clRETHAddr: string;
     let wstETHMock: WstETHMock, rETHMock: RETHMock;
@@ -44,14 +41,10 @@ describe("Comptroller", function () {
     beforeEach(async () => {
         // Contracts are deployed using the first signer/account by default
         [deployer, user] = await ethers.getSigners();
-        // Comptroller proxy
-        unitroller = await ethers.deployContract("Unitroller");
-        // Comptroller implementation
-        comptroller = await ethers.deployContract("Comptroller");
-        // set pending implementation in Unitroller
-        await unitroller.setPendingImplementation(await comptroller.getAddress());
-        // accept it in Comptroller to become new implementation
-        await comptroller.become(await unitroller.getAddress());
+        // Comptroller
+        const Comptroller = await ethers.getContractFactory("Comptroller");
+        comptroller = await upgrades.deployProxy(Comptroller);
+        comptroller.waitForDeployment();
 
         const stETHMock = await ethers.deployContract("StETHMock");
         wstETHMock = await ethers.deployContract("WstETHMock", [
@@ -73,7 +66,7 @@ describe("Comptroller", function () {
         // ClErc20 contract instances
         clWstETH = await ethers.deployContract("ClErc20", [
             await wstETHMock.getAddress(),
-            await unitroller.getAddress(),
+            await comptroller.getAddress(),
             await jumpRateModel.getAddress(),
             initialExchangeRate,
             "Cluster WstETH Token",
@@ -84,7 +77,7 @@ describe("Comptroller", function () {
 
         clRETH = await ethers.deployContract("ClErc20", [
             await rETHMock.getAddress(),
-            await unitroller.getAddress(),
+            await comptroller.getAddress(),
             await jumpRateModel.getAddress(),
             initialExchangeRate,
             "Cluster RETH Token",
@@ -137,6 +130,77 @@ describe("Comptroller", function () {
     });
 
     context("Admin Functions", () => {
+        context("Sets pending admin", () => {
+            it("Should revert if caller is not admin", async () => {
+                const setPendingAdminTx = comptroller
+                    .connect(user)
+                    .setPendingAdmin(
+                        user.address
+                    );
+
+                await expect(setPendingAdminTx).to.be.revertedWithCustomError(
+                    comptroller, "NotAdmin"
+                );
+            });
+
+            it("Should revert if zero address is passed", async () => {
+                const setPendingAdminTx = comptroller
+                    .connect(deployer)
+                    .setPendingAdmin(
+                        ethers.ZeroAddress
+                    );
+
+                await expect(setPendingAdminTx).to.be.revertedWithCustomError(
+                    comptroller, "ZeroAddress"
+                );
+            });
+
+            it("Should be able to set if caller is admin", async () => {
+                const oldPendingAdmin = await comptroller.pendingAdmin();
+
+                const setPendingAdminTx = comptroller
+                    .connect(deployer)
+                    .setPendingAdmin(
+                        user.address
+                    );
+
+                await expect(setPendingAdminTx).to.emit(
+                    comptroller, "NewPendingAdmin"
+                ).withArgs(oldPendingAdmin, user.address);
+            });
+        });
+
+        context("Accepts new admin", () => {
+            beforeEach(async () => {
+                // To accept new admin, the pending admin should be set first.
+                await comptroller.connect(deployer).setPendingAdmin(
+                    user.address
+                );
+            });
+
+            it("Should revert if caller is not pending admin", async () => {
+                const acceptAdminTx = comptroller
+                    .connect(deployer)
+                    .acceptAdmin();
+
+                await expect(acceptAdminTx).to.be.revertedWithCustomError(
+                    comptroller, "NotPendingAdmin"
+                );
+            });
+
+            it("Should be able to accept if caller is pending admin", async () => {
+                const oldAdmin = await comptroller.admin();
+
+                const acceptAdminTx = comptroller
+                    .connect(user)
+                    .acceptAdmin();
+
+                await expect(acceptAdminTx).to.emit(
+                    comptroller, "NewAdmin"
+                ).withArgs(oldAdmin, user.address);
+            });
+        });
+
         context("Support Market", () => {
             it("Should revert if caller is not admin", async () => {
                 const supportMarketTx = comptroller

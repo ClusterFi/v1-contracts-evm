@@ -1,12 +1,10 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import {
     ClErc20,
-    Comptroller,
     ERC20Mock,
     JumpRateModel,
-    Unitroller,
     WstETHMock
 } from "../typechain-types";
 
@@ -14,8 +12,7 @@ describe("ClToken", function () {
     let deployer: HardhatEthersSigner, account1: HardhatEthersSigner;
     
     let clErc20: ClErc20;
-    let unitroller: Unitroller;
-    let comptroller: Comptroller;
+    let comptroller: any;
     let jumpRateModel: JumpRateModel;
     let underlyingToken: WstETHMock;
 
@@ -37,12 +34,9 @@ describe("ClToken", function () {
             await stETHMock.getAddress()
         ]);
 
-        comptroller = await ethers.deployContract("Comptroller");
-        unitroller = await ethers.deployContract("Unitroller");
-        // set pending comptroller implementation in Unitroller and accept it in Comptroller.
-        // only after that, we can pass unitroller into ClErc20 constructor.
-        await unitroller.setPendingImplementation(await comptroller.getAddress());
-        await comptroller.become(await unitroller.getAddress());
+        const Comptroller = await ethers.getContractFactory("Comptroller");
+        comptroller = await upgrades.deployProxy(Comptroller);
+        comptroller.waitForDeployment();
 
         const blocksPerYear = 2102400n;
         jumpRateModel = await ethers.deployContract("JumpRateModel", [
@@ -58,7 +52,7 @@ describe("ClToken", function () {
         // ClErc20 contract instance
         clErc20 = await ethers.deployContract("ClErc20", [
             await underlyingToken.getAddress(),
-            await unitroller.getAddress(),
+            await comptroller.getAddress(),
             await jumpRateModel.getAddress(),
             initialExchangeRate,
             name,
@@ -97,7 +91,7 @@ describe("ClToken", function () {
         });
 
         it("Should return correct comptroller address", async () => {
-            expect(await clErc20.comptroller()).to.equal(await unitroller.getAddress());
+            expect(await clErc20.comptroller()).to.equal(await comptroller.getAddress());
         });
 
         it("Should return correct interestRateModel address", async () => {
@@ -145,7 +139,7 @@ describe("ClToken", function () {
                 const setComptrollerTx = clErc20
                     .connect(account1)
                     .setComptroller(
-                        await unitroller.getAddress()
+                        await comptroller.getAddress()
                     );
 
                 await expect(setComptrollerTx).to.be.revertedWithCustomError(
@@ -160,7 +154,7 @@ describe("ClToken", function () {
                 const setComptrollerTx = clErc20
                     .connect(deployer)
                     .setComptroller(
-                        await unitroller.getAddress()
+                        await comptroller.getAddress()
                     );
 
                 await expect(setComptrollerTx).to.emit(
