@@ -118,6 +118,8 @@ interface IComptroller {
 
     function isComptroller() external view returns (bool);
 
+    function getMarketInfo(address clToken) external view returns (bool, uint256);
+
     /*** Assets You Are In ***/
 
     function enterMarkets(address[] calldata clTokens) external;

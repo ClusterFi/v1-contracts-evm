@@ -420,6 +420,11 @@ contract Comptroller is
         emit ClrGranted(recipient, amount);
     }
 
+    function getMarketInfo(address clToken) external view returns (bool, uint256) {
+        Market storage market = markets[clToken];
+        return (market.isListed, market.collateralFactorMantissa);
+    }
+
     /*** Assets You Are In ***/
 
     /**
