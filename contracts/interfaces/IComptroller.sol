@@ -115,7 +115,7 @@ interface IComptroller {
     error ZeroPrice();
     error TooMuchRepay();
     error ComptrollerMismatch();
-    error OnlyLeverageAllowed();
+    error SenderMustBeLeverage();
 
     function isComptroller() external view returns (bool);
 

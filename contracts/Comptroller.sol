@@ -730,10 +730,10 @@ contract Comptroller is
     }
 
     function borrowBehalfAllowed(
-        address caller
+        address sender
     ) external view {
-        if (caller != leverageAddress) {
-            revert OnlyLeverageAllowed();
+        if (sender != leverageAddress) {
+            revert SenderMustBeLeverage();
         }
     }
 
