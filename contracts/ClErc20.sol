@@ -99,6 +99,16 @@ contract ClErc20 is IClErc20, ClToken {
     }
 
     /**
+     * @notice Sender borrows assets from the protocol to the specific borrower
+     * @dev The caller must be leverage contract otherwise reverts
+     * @param borrowAmount The amount of the underlying asset to borrow
+     * @param borrower the user to borrow on behalf of
+     */
+    function borrowBehalf(address borrower, uint borrowAmount) external override {
+        borrowBehalfInternal(borrower, borrowAmount);
+    }
+
+    /**
      * @notice Sender repays their own borrow
      * @param _repayAmount The amount to repay, or -1 for the full outstanding amount
      */

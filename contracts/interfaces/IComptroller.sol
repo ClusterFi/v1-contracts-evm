@@ -115,6 +115,7 @@ interface IComptroller {
     error ZeroPrice();
     error TooMuchRepay();
     error ComptrollerMismatch();
+    error OnlyLeverageAllowed();
 
     function isComptroller() external view returns (bool);
 
@@ -160,7 +161,15 @@ interface IComptroller {
         uint borrowAmount
     ) external;
 
-    function borrowVerify(address clToken, address borrower, uint borrowAmount) external;
+    function borrowBehalfAllowed(
+        address borrower
+    ) external;
+
+    function borrowVerify(
+        address clToken,
+        address borrower,
+        uint borrowAmount
+    ) external;
 
     function repayBorrowAllowed(
         address clToken,

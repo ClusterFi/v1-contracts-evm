@@ -355,6 +355,12 @@ contract Comptroller is
         emit NewClrAddress(oldClrAddress, newClrAddress);
     }
 
+    function setLeverageAddress(address newLeverage) external {
+        _onlyAdmin();
+
+        leverageAddress = newLeverage;
+    }
+
     /*** Clr Distribution Admin ***/
 
     /**
@@ -649,7 +655,7 @@ contract Comptroller is
         address redeemer,
         uint redeemAmount,
         uint redeemTokens
-    ) external pure override {
+    ) external pure {
         // Shh - currently unused
         clToken;
         redeemer;
@@ -721,6 +727,14 @@ contract Comptroller is
         Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
+    }
+
+    function borrowBehalfAllowed(
+        address caller
+    ) external view {
+        if (caller != leverageAddress) {
+            revert OnlyLeverageAllowed();
+        }
     }
 
     /**
