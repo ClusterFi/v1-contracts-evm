@@ -20,6 +20,8 @@ interface IClErc20 {
 
     function borrow(uint _borrowAmount) external;
 
+    function borrowBehalf(address _borrower, uint _borrowAmount) external;
+
     function repayBorrow(uint _repayAmount) external;
 
     function repayBorrowBehalf(address _borrower, uint _repayAmount) external;

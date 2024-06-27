@@ -714,6 +714,13 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         borrowFresh(payable(msg.sender), borrowAmount);
     }
 
+    function borrowBehalfInternal(address borrower, uint borrowAmount) internal nonReentrant {
+        IComptroller(comptroller).borrowBehalfAllowed(msg.sender);
+        accrueInterest();
+        // borrowFresh emits borrow-specific logs on errors, so we don't need to
+        borrowFresh(payable(borrower), borrowAmount);
+    }
+
     /**
      * @notice Users borrow assets from the protocol to their own address
      * @param borrowAmount The amount of the underlying asset to borrow

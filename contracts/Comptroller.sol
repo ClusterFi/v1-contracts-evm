@@ -355,6 +355,16 @@ contract Comptroller is
         emit NewClrAddress(oldClrAddress, newClrAddress);
     }
 
+    function setLeverageAddress(address newLeverage) external {
+        _onlyAdmin();
+
+        address oldLeverageAddress = leverageAddress;
+
+        leverageAddress = newLeverage;
+
+        emit NewLeverageAddress(oldLeverageAddress, newLeverage);
+    }
+
     /*** Clr Distribution Admin ***/
 
     /**
@@ -418,6 +428,11 @@ contract Comptroller is
             revert InsufficientClrForGrant();
         }
         emit ClrGranted(recipient, amount);
+    }
+
+    function getMarketInfo(address clToken) external view returns (bool, uint256) {
+        Market storage market = markets[clToken];
+        return (market.isListed, market.collateralFactorMantissa);
     }
 
     /*** Assets You Are In ***/
@@ -644,7 +659,7 @@ contract Comptroller is
         address redeemer,
         uint redeemAmount,
         uint redeemTokens
-    ) external pure override {
+    ) external pure {
         // Shh - currently unused
         clToken;
         redeemer;
@@ -716,6 +731,14 @@ contract Comptroller is
         Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
+    }
+
+    function borrowBehalfAllowed(
+        address sender
+    ) external view {
+        if (sender != leverageAddress) {
+            revert SenderMustBeLeverage();
+        }
     }
 
     /**

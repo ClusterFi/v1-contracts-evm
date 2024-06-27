@@ -15,6 +15,7 @@ const { parseEther, parseUnits } = ethers;
 describe("Comptroller", function () {
     let deployer: HardhatEthersSigner, user: HardhatEthersSigner;
     let comptroller: any;
+    let leverage: any;
     let clWstETH: ClErc20, clRETH: ClErc20;
     let clWstETHAddr: string, clRETHAddr: string;
     let wstETHMock: WstETHMock, rETHMock: RETHMock;
@@ -41,10 +42,18 @@ describe("Comptroller", function () {
     beforeEach(async () => {
         // Contracts are deployed using the first signer/account by default
         [deployer, user] = await ethers.getSigners();
+
         // Comptroller
         const Comptroller = await ethers.getContractFactory("Comptroller");
         comptroller = await upgrades.deployProxy(Comptroller);
         comptroller.waitForDeployment();
+
+        // Leverage
+        const Leverage = await ethers.getContractFactory("Leverage");
+        leverage = await upgrades.deployProxy(Leverage, [
+            await comptroller.getAddress()
+        ]);
+        leverage.waitForDeployment();
 
         const stETHMock = await ethers.deployContract("StETHMock");
         wstETHMock = await ethers.deployContract("WstETHMock", [
@@ -206,7 +215,7 @@ describe("Comptroller", function () {
                 const supportMarketTx = comptroller
                     .connect(user)
                     .supportMarket(
-                        await clWstETH.getAddress()
+                        clWstETHAddr
                     );
 
                 await expect(supportMarketTx).to.be.revertedWithCustomError(
@@ -215,31 +224,28 @@ describe("Comptroller", function () {
             });
 
             it("Should be able to list a market", async () => {
-                const marketAddr = await clWstETH.getAddress();
                 const supportMarketTx = comptroller
                     .connect(deployer)
                     .supportMarket(
-                        marketAddr
+                        clWstETHAddr
                     );
 
                 await expect(supportMarketTx).to.emit(
                     comptroller, "MarketListed"
-                ).withArgs(marketAddr);
+                ).withArgs(clWstETHAddr);
 
-                expect(await comptroller.allMarkets(0)).to.equal(marketAddr);
+                expect(await comptroller.allMarkets(0)).to.equal(clWstETHAddr);
             });
 
             it("Should revert if a market is already listed", async () => {
-                const marketAddr = await clWstETH.getAddress();
-
                 await comptroller.connect(deployer).supportMarket(
-                    marketAddr
+                    clWstETHAddr
                 );
                 
                 const secondTx = comptroller
                     .connect(deployer)
                     .supportMarket(
-                        marketAddr
+                        clWstETHAddr
                     );
 
                 await expect(secondTx).to.be.revertedWithCustomError(
@@ -616,13 +622,43 @@ describe("Comptroller", function () {
             });
 
             it("Should set new CLR address by admin", async () => {
-                await comptroller.connect(deployer).setClrAddress(
-                    await clusterToken.getAddress()
-                );
+                const clrAddr = await clusterToken.getAddress();
+                const setClrTx = comptroller
+                    .connect(deployer)
+                    .setClrAddress(
+                        clrAddr
+                    );
 
-                expect(await comptroller.clrAddress()).to.equal(
-                    await clusterToken.getAddress()
+                await expect(setClrTx).to.emit(
+                    comptroller, "NewClrAddress"
+                ).withArgs(ethers.ZeroAddress, clrAddr);
+            });
+        });
+
+        context("Set Leverage address", () => {
+            it("Should revert if caller is not admin", async () => {
+                const setLeverageTx = comptroller
+                    .connect(user)
+                    .setLeverageAddress(
+                        await leverage.getAddress()
+                    );
+
+                await expect(setLeverageTx).to.be.revertedWithCustomError(
+                    comptroller, "NotAdmin"
                 );
+            });
+
+            it("Should set new CLR address by admin", async () => {
+                const leverageAddr = await leverage.getAddress();
+                const setLeverageTx = comptroller
+                    .connect(deployer)
+                    .setLeverageAddress(
+                        leverageAddr
+                    );
+
+                await expect(setLeverageTx).to.emit(
+                    comptroller, "NewLeverageAddress"
+                ).withArgs(ethers.ZeroAddress, leverageAddr);
             });
         });
 
@@ -681,6 +717,47 @@ describe("Comptroller", function () {
                 await expect(grantClrTx).to.emit(
                     comptroller, "ClrGranted"
                 ).withArgs(user.address, amountToTransfer);
+            });
+        });
+    });
+
+    context("View Functions", () => {
+        context("getMarketInfo", () => {
+            const collateralFactor = parseEther("0.8");
+
+            beforeEach(async () => {
+                // list clWstETH market
+                await comptroller.connect(deployer).supportMarket(
+                    clWstETHAddr
+                );
+
+                // should set underlying price feed prior to collateral factor configuration
+                await priceOracle.setFeed(
+                    await wstETHMock.symbol(),
+                    await wstETHCompositeOracle.getAddress()
+                );
+
+                // should set price oracle
+                await comptroller.connect(deployer).setPriceOracle(
+                    await priceOracle.getAddress()
+                );
+
+                await comptroller.connect(deployer).setCollateralFactor(
+                    clWstETHAddr,
+                    collateralFactor
+                );
+            });
+
+            it("Should return listed market info", async () => {
+                const marketInfo = await comptroller.getMarketInfo(clWstETHAddr);
+                expect(marketInfo[0]).to.equal(true);
+                expect(marketInfo[1]).to.equal(collateralFactor);
+            });
+
+            it("Should return unset market info", async () => {
+                const marketInfo = await comptroller.getMarketInfo(clRETHAddr);
+                expect(marketInfo[0]).to.equal(false);
+                expect(marketInfo[1]).to.equal(0n);
             });
         });
     });
