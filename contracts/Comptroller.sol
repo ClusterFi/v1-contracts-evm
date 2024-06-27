@@ -358,7 +358,11 @@ contract Comptroller is
     function setLeverageAddress(address newLeverage) external {
         _onlyAdmin();
 
+        address oldLeverageAddress = leverageAddress;
+
         leverageAddress = newLeverage;
+
+        emit NewLeverageAddress(oldLeverageAddress, newLeverage);
     }
 
     /*** Clr Distribution Admin ***/

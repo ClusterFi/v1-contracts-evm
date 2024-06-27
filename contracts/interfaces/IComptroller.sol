@@ -50,6 +50,9 @@ interface IComptroller {
     /// @notice Emitted when new CLR token address is set.
     event NewClrAddress(address oldClr, address newClr);
 
+    /// @notice Emitted when new leverage address is set.
+    event NewLeverageAddress(address oldLev, address newLev);
+
     /// @notice Emitted when a new borrow-side CLR speed is calculated for a market
     event ClrBorrowSpeedUpdated(address indexed clToken, uint newSpeed);
 

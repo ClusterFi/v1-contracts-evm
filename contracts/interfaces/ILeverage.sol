@@ -18,6 +18,4 @@ interface ILeverage is IFlashLoanRecipient {
     error ZeroBorrowAmount();
     error TooMuchForFlashloan();
     error InvalidLoanData();
-
-    event LeverageFeeUpdated(uint256 _newFee);
 }
