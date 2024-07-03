@@ -15,7 +15,16 @@ interface ILeverage is IFlashLoanRecipient {
     error AlreadyAllowedMarket();
     error NotAllowedMarket();
     error NotBalancerVault();
-    error ZeroBorrowAmount();
-    error TooMuchForFlashloan();
+    error TooMuchBorrow();
     error InvalidLoanData();
+
+    event AddMarket(
+        address indexed _clToken,
+        address indexed _underlying
+    );
+
+    event RemoveMarket(
+        address indexed _clToken,
+        address indexed _underlying
+    );
 }

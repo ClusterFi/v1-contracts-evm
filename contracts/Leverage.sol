@@ -31,9 +31,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     // add mapping to store the allowed tokens. Mapping provides faster access than array
     mapping(address => bool) public allowedTokens;
     // add mapping to store clToken contracts
-    mapping(address => address) private clTokenMapping;
-    // add mapping to store lToken collateral factors
-    mapping(address => uint256) private collateralFactor;
+    mapping(address => address) public clTokenMapping;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -52,76 +50,83 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
      * @notice Allows the owner to add a token for leverage
      * @param _clToken The address of clToken contract to add
      */
-    function addToken(address _clToken) external onlyOwner {
-        address underlying = IClErc20(_clToken).underlying();
+    function addMarket(address _clToken) external onlyOwner {
+        if (_clToken == address(0)) revert InvalidMarket();
 
-        if (underlying == address(0)) revert InvalidMarket();
+        address underlying = IClErc20(_clToken).underlying();
         if (allowedTokens[underlying]) revert AlreadyAllowedMarket();
 
-        (
-            bool isListed,
-            uint256 collateralFactorMantissa
-        ) = IComptroller(comptroller).getMarketInfo(_clToken);
+        (bool isListed,) = IComptroller(comptroller).getMarketInfo(_clToken);
 
         if (!isListed) revert MarketIsNotListed();
 
         allowedTokens[underlying] = true;
-
         clTokenMapping[underlying] = _clToken;
-        collateralFactor[underlying] = collateralFactorMantissa;
+
+        emit AddMarket(_clToken, underlying);
     }
 
     /**
      * @notice Allows the owner to remove a token from leverage
      * @param _clToken The address of clToken contract to remove
      */
-    function removeToken(address _clToken) external onlyOwner {
-        address underlying = IClErc20(_clToken).underlying();
+    function removeMarket(address _clToken) external onlyOwner {
+        if (_clToken == address(0)) revert InvalidMarket();
 
-        if (underlying == address(0)) revert InvalidMarket();
+        address underlying = IClErc20(_clToken).underlying();
         if (!allowedTokens[underlying]) revert NotAllowedMarket();
 
         allowedTokens[underlying] = false;
 
         // nullify, essentially, existing records
         delete clTokenMapping[underlying];
-        delete collateralFactor[underlying];
+
+        emit RemoveMarket(_clToken, underlying);
     }
 
     function loop(
         address _token,
-        uint256 _collateralAmount,
+        uint256 _amount,
         uint256 _borrowAmount
     ) external nonReentrant {
         if (!allowedTokens[_token]) revert NotAllowedMarket();
-        if (_borrowAmount == 0) revert ZeroBorrowAmount();
 
         address _clToken = clTokenMapping[_token];
-        if (_collateralAmount > 0) {
-            IERC20(_token).safeTransferFrom(msg.sender, address(this), _collateralAmount);
+        if (_amount > 0) {
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
 
             // Supply
-            IERC20(_token).approve(_clToken, _collateralAmount);
-            IClErc20(_clToken).mint(_collateralAmount);
+            IERC20(_token).approve(_clToken, _amount);
+            uint256 beforeBalance = IERC20(_clToken).balanceOf(address(this));
+            IClErc20(_clToken).mint(_amount);
+            uint256 afterBalance = IERC20(_clToken).balanceOf(address(this));
+            IClToken(_clToken).transfer(msg.sender, afterBalance - beforeBalance);
         }
 
-        if (IERC20(_token).balanceOf(BALANCER_VAULT) < _borrowAmount) {
-            revert TooMuchForFlashloan();
+        if (_borrowAmount > 0) {
+            if (IERC20(_token).balanceOf(BALANCER_VAULT) < _borrowAmount) {
+                revert TooMuchBorrow();
+            }
+
+            IERC20[] memory tokens = new IERC20[](1);
+            tokens[0] = IERC20(_token);
+
+            uint256[] memory amounts = new uint256[](1);
+            amounts[0] = _borrowAmount;
+
+            UserData memory userData = UserData({
+                user: msg.sender,
+                borrowedToken: _token,
+                borrowedAmount: _borrowAmount
+            });
+
+            IVault(BALANCER_VAULT).flashLoan(
+                IFlashLoanRecipient(address(this)),
+                tokens,
+                amounts,
+                abi.encode(userData)
+            );
         }
-
-        IERC20[] memory tokens = new IERC20[](1);
-        tokens[0] = IERC20(_token);
-
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = _borrowAmount;
-
-        UserData memory userData = UserData({
-            user: msg.sender,
-            borrowedToken: _token,
-            borrowedAmount: _borrowAmount
-        });
-
-        IVault(BALANCER_VAULT).flashLoan(IFlashLoanRecipient(address(this)), tokens, amounts, abi.encode(userData));
     }
 
     /**
@@ -136,7 +141,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint256[] memory amounts,
         uint256[] memory feeAmounts,
         bytes memory userData
-    ) external override nonReentrant {
+    ) external override {
         if (msg.sender != BALANCER_VAULT) revert NotBalancerVault();
 
         uint256 feeAmount = 0;
@@ -151,6 +156,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         }
 
         address _clToken = clTokenMapping[uData.borrowedToken];
+
         // supply borrowed amount
         IERC20(uData.borrowedToken).approve(_clToken, uData.borrowedAmount);
         IClErc20(_clToken).mint(uData.borrowedAmount);
@@ -164,6 +170,6 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         IClErc20(_clToken).borrowBehalf(uData.user, repayAmount);
 
         // repay flashloan, where msg.sender = vault
-        IERC20(uData.borrowedToken).safeTransferFrom(uData.user, msg.sender, repayAmount);
+        IERC20(uData.borrowedToken).safeTransferFrom(uData.user, BALANCER_VAULT, repayAmount);
     }
 }
