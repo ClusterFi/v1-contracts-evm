@@ -19,6 +19,7 @@ describe("ClToken", function () {
     let clWstETH: ClErc20, clRETH: ClErc20;
     let clWstETHAddr: string, clRETHAddr: string;
     let comptroller: any;
+    let leverage: any;
     let priceOracle: PriceOracle;
     let jumpRateModel: JumpRateModel;
     let wstETH: WstETHMock, rETH: RETHMock;
@@ -53,6 +54,12 @@ describe("ClToken", function () {
         const Comptroller = await ethers.getContractFactory("Comptroller");
         comptroller = await upgrades.deployProxy(Comptroller);
         comptroller.waitForDeployment();
+
+        const Leverage = await ethers.getContractFactory("Leverage");
+        leverage = await upgrades.deployProxy(Leverage, [
+            await comptroller.getAddress()
+        ]);
+        leverage.waitForDeployment();
 
         // set price oracle in Comptroller
         priceOracle = await ethers.deployContract("PriceOracle");
@@ -563,7 +570,37 @@ describe("ClToken", function () {
             });
         });
 
-        context("Repay", () => {
+        context("Borrow on behalf of another user", () => {
+            const amountToBorrow = parseUnits("80", 18);
+
+            beforeEach(async () => {
+                // Make some liquidity for a borrow market
+                await rETH.connect(deployer).approve(clRETHAddr, amount);
+                await clRETH.connect(deployer).mint(amount);
+
+                // supply assets to the market
+                await clWstETH.connect(account1).mint(amount);
+
+                // set leverage address in Comptroller
+                await comptroller.connect(deployer).setLeverageAddress(
+                    await leverage.getAddress()
+                );
+            });
+            
+            it("Should revert if caller is not leverage contract", async () => {
+                const borrowBehalfTx = clRETH
+                    .connect(account1)
+                    .borrowBehalf(
+                        deployer.address, amountToBorrow
+                    );
+
+                await expect(borrowBehalfTx).to.revertedWithCustomError(
+                    comptroller, "SenderMustBeLeverage"
+                );
+            });
+        });
+
+        context("Repay underlying assets", () => {
             const amountToBorrow = parseUnits("80", 18);
 
             beforeEach(async () => {

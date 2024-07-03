@@ -91,6 +91,9 @@ abstract contract ComptrollerStorageV2 {
     /// @notice CLR token contract address
     address public clrAddress;
 
+    /// @notice Leverage contract address
+    address public leverageAddress;
+
     /// @notice The portion of clrRate that each market currently receives
     mapping(address => uint256) public clrSpeeds;
 
