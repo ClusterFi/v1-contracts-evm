@@ -25,7 +25,7 @@ const config: HardhatUserConfig = {
       }
     },
     sepolia: {
-      url: `https://eth-sepolia.g.alchemy.com/v2${process.env.ALCHEMY_KEY_SEPOLIA}`,
+      url: `https://eth-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_KEY_SEPOLIA}`,
       chainId: 11_155_111,
       accounts: [process.env.PRIVATE_KEY as string]
     },
@@ -39,6 +39,9 @@ const config: HardhatUserConfig = {
     enabled: true,
     currency: 'USD',
   },
+  sourcify: {
+    enabled: false
+  },  
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
   }
