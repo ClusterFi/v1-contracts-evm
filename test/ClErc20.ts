@@ -40,6 +40,7 @@ describe("ClToken", function () {
     const STETHAddr = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
 
     const collateralFactor = parseEther("0.8");
+    const closeFactor = parseEther("0.6");
 
     beforeEach(async () => {
         // Contracts are deployed using the first signer/account by default
@@ -644,6 +645,106 @@ describe("ClToken", function () {
 
                 await expect(repayBehalfTx).to.emit(
                     clRETH, "RepayBorrow"
+                );
+            });
+        });
+
+        context("Liquidate borrow", () => {
+            const amountToBorrow = parseUnits("80", 18);
+            const amountToRepay = parseUnits("40", 18);
+
+            beforeEach(async () => {
+                // mint amount for repayment, use deployer as liquidator
+                await wstETH.mint(deployer.address, amount);
+
+                await comptroller.connect(account1).enterMarkets(
+                    [clWstETHAddr, clRETHAddr]
+                );
+                
+                // Make some liquidity for a borrow market
+                await rETH.connect(deployer).approve(clRETHAddr, amount);
+                await clRETH.connect(deployer).mint(amount);
+
+                // supply collateral to the WstETH market
+                await clWstETH.connect(account1).mint(amount);
+                // borrow from rETH market
+                await clRETH.connect(account1).borrow(amountToBorrow);
+
+                // should set close factor to set max liquidatable borrow
+                // that can be repaid in a single txn
+                await comptroller.connect(deployer).setCloseFactor(
+                    closeFactor
+                );
+            });
+
+            it("Should revert if borrower does not have shortfall", async () => {
+                const liquidateBorrowTx = clRETH
+                    .connect(deployer)
+                    .liquidateBorrow(
+                        account1.address,
+                        amountToBorrow,
+                        clWstETHAddr
+                    );
+
+                await expect(liquidateBorrowTx).to.revertedWithCustomError(
+                    comptroller, "InsufficientShortfall"
+                );
+            });
+
+            it("Should revert if repay amount is greater than max close", async () => {
+                // set direct price to make shortfall
+                await priceOracle.connect(deployer).setDirectPrice(
+                    await wstETH.getAddress(), parseEther("1000")
+                );
+
+                const liquidateBorrowTx = clRETH
+                    .connect(deployer)
+                    .liquidateBorrow(
+                        account1.address,
+                        amountToBorrow,
+                        clWstETHAddr
+                    );
+
+                await expect(liquidateBorrowTx).to.revertedWithCustomError(
+                    comptroller, "TooMuchRepay"
+                );
+            });
+
+            it("Should revert if seize amount is greater than borrower's collateral", async () => {
+                // low price
+                await priceOracle.connect(deployer).setDirectPrice(
+                    await wstETH.getAddress(), parseEther("1000")
+                );
+
+                // set liquidation incentive as 0.9 ether
+                await comptroller.setLiquidationIncentive(parseEther("0.9"));
+
+                await rETH.connect(deployer).approve(clRETHAddr, amountToRepay);
+
+                const liquidateBorrowTx = clRETH.connect(deployer).liquidateBorrow(
+                    account1.address, amountToRepay, clWstETHAddr
+                );
+
+                await expect(liquidateBorrowTx).to.revertedWithCustomError(
+                    clRETH, "LiquidateSeizeTooMuch"
+                );
+            });
+
+            it("Should liquidate borrow", async () => {
+                await priceOracle.connect(deployer).setDirectPrice(
+                    await wstETH.getAddress(), parseEther("2000")
+                );
+
+                // set liquidation incentive as 1 ether
+                await comptroller.setLiquidationIncentive(parseEther("0.9"));
+
+                await rETH.connect(deployer).approve(clRETHAddr, amountToRepay);
+                const liquidateBorrowTx = clRETH.connect(deployer).liquidateBorrow(
+                    account1.address, amountToRepay, clWstETHAddr
+                );
+
+                await expect(liquidateBorrowTx).to.emit(
+                    clRETH, "LiquidateBorrow"
                 );
             });
         });
