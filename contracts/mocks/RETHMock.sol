@@ -35,7 +35,7 @@ contract RETHMock is ERC20 {
         // Use 1:1 ratio if no rETH is minted
         if (rethSupply == 0) return _rethAmount;
         // Calculate and return
-        return _rethAmount * totalEthBalance / rethSupply;
+        return (_rethAmount * totalEthBalance) / rethSupply;
     }
 
     /// @notice Calculate the amount of rETH backed by an amount of ETH
@@ -48,7 +48,7 @@ contract RETHMock is ERC20 {
             revert TotalEthBalanceIsZero();
         }
         // Calculate and return
-        return _ethAmount * rethSupply / totalEthBalance;
+        return (_ethAmount * rethSupply) / totalEthBalance;
     }
 
     /// @notice Get the current ETH : rETH exchange rate

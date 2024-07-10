@@ -132,24 +132,11 @@ interface IComptroller {
 
     /*** Policy Hooks ***/
 
-    function mintAllowed(
-        address clToken,
-        address minter,
-        uint mintAmount
-    ) external;
+    function mintAllowed(address clToken, address minter, uint mintAmount) external;
 
-    function mintVerify(
-        address clToken,
-        address minter,
-        uint mintAmount,
-        uint mintTokens
-    ) external;
+    function mintVerify(address clToken, address minter, uint mintAmount, uint mintTokens) external;
 
-    function redeemAllowed(
-        address clToken,
-        address redeemer,
-        uint redeemTokens
-    ) external;
+    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) external;
 
     function redeemVerify(
         address clToken,
@@ -158,21 +145,11 @@ interface IComptroller {
         uint redeemTokens
     ) external;
 
-    function borrowAllowed(
-        address clToken,
-        address borrower,
-        uint borrowAmount
-    ) external;
+    function borrowAllowed(address clToken, address borrower, uint borrowAmount) external;
 
-    function borrowBehalfAllowed(
-        address borrower
-    ) external;
+    function borrowBehalfAllowed(address borrower) external;
 
-    function borrowVerify(
-        address clToken,
-        address borrower,
-        uint borrowAmount
-    ) external;
+    function borrowVerify(address clToken, address borrower, uint borrowAmount) external;
 
     function repayBorrowAllowed(
         address clToken,

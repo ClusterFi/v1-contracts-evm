@@ -8,16 +8,13 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IClusterToken } from "./interfaces/IClusterToken.sol";
 
 contract ClusterToken is ERC20, ERC20Burnable, ERC20Permit, Ownable, IClusterToken {
-
     bool public initialMinted = false;
 
     address public minter;
 
-    constructor(address initialOwner)
-        ERC20("ClusterToken", "CLR")
-        ERC20Permit("ClusterToken")
-        Ownable(initialOwner)
-    {
+    constructor(
+        address initialOwner
+    ) ERC20("ClusterToken", "CLR") ERC20Permit("ClusterToken") Ownable(initialOwner) {
         _mint(initialOwner, 0);
     }
 

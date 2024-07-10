@@ -188,9 +188,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
      * @notice accrues interest and sets a new reserve factor for the protocol using _setReserveFactorFresh
      * @dev Admin function to accrue interest and set a new reserve factor
      */
-    function setReserveFactor(
-        uint _newReserveFactorMantissa
-    ) external override nonReentrant {
+    function setReserveFactor(uint _newReserveFactorMantissa) external override nonReentrant {
         accrueInterest();
         // _setReserveFactorFresh emits reserve-factor-specific logs on errors, so we don't need to.
         _setReserveFactorFresh(_newReserveFactorMantissa);
@@ -245,9 +243,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
      * @param account Address of the account to snapshot
      * @return (token balance, borrow balance, exchange rate mantissa)
      */
-    function getAccountSnapshot(
-        address account
-    ) external view override returns (uint, uint, uint) {
+    function getAccountSnapshot(address account) external view override returns (uint, uint, uint) {
         return (
             accountTokens[account],
             borrowBalanceStoredInternal(account),
@@ -487,12 +483,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         uint tokens
     ) internal returns (bool) {
         /* Fail if transfer not allowed */
-        IComptroller(comptroller).transferAllowed(
-            address(this),
-            src,
-            dst,
-            tokens
-        );
+        IComptroller(comptroller).transferAllowed(address(this), src, dst, tokens);
 
         /* Do not allow self-transfers */
         if (src == dst) {
@@ -806,12 +797,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         uint repayAmount
     ) internal returns (uint) {
         /* Fail if repayBorrow not allowed */
-        IComptroller(comptroller).repayBorrowAllowed(
-            address(this),
-            payer,
-            borrower,
-            repayAmount
-        );
+        IComptroller(comptroller).repayBorrowAllowed(address(this), payer, borrower, repayAmount);
 
         /* Verify market's block number equals current block number */
         if (accrualBlockNumber != _getBlockNumber()) {
@@ -939,7 +925,7 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         );
 
         // Revert if borrower collateral token balance < seizeTokens
-        if(IClToken(clTokenCollateral).balanceOf(borrower) < seizeTokens) {
+        if (IClToken(clTokenCollateral).balanceOf(borrower) < seizeTokens) {
             revert LiquidateSeizeTooMuch();
         }
 

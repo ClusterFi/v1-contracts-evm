@@ -13,9 +13,9 @@ import { ILeverage } from "./interfaces/ILeverage.sol";
 
 /**
  * @title Leverager
- * @notice This contract allows users to leverage their positions by borrowing 
+ * @notice This contract allows users to leverage their positions by borrowing
  * assets, increasing their supply and thus enabling higher yields.
- * @dev The contract implements the Ownable, IFlashLoanRecipient, and ReentrancyGuard. 
+ * @dev The contract implements the Ownable, IFlashLoanRecipient, and ReentrancyGuard.
  * It uses SafeERC20 for safe token transfers.
  * @author Cluster
  */
@@ -38,9 +38,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         _disableInitializers();
     }
 
-    function initialize(
-        address _comptroller
-    ) public initializer {
+    function initialize(address _comptroller) public initializer {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
         comptroller = _comptroller;
@@ -56,7 +54,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address underlying = IClErc20(_clToken).underlying();
         if (allowedTokens[underlying]) revert AlreadyAllowedMarket();
 
-        (bool isListed,) = IComptroller(comptroller).getMarketInfo(_clToken);
+        (bool isListed, ) = IComptroller(comptroller).getMarketInfo(_clToken);
 
         if (!isListed) revert MarketIsNotListed();
 
@@ -84,11 +82,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit RemoveMarket(_clToken, underlying);
     }
 
-    function loop(
-        address _token,
-        uint256 _amount,
-        uint256 _borrowAmount
-    ) external nonReentrant {
+    function loop(address _token, uint256 _amount, uint256 _borrowAmount) external nonReentrant {
         if (!allowedTokens[_token]) revert NotAllowedMarket();
 
         address _clToken = clTokenMapping[_token];
@@ -160,7 +154,7 @@ contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
         // supply borrowed amount
         IERC20(uData.borrowedToken).approve(_clToken, uData.borrowedAmount);
         IClErc20(_clToken).mint(uData.borrowedAmount);
-        
+
         // transfer minted clTokens to user
         uint256 clTokenAmount = IClToken(_clToken).balanceOf(address(this));
         IClToken(_clToken).transfer(uData.user, clTokenAmount);

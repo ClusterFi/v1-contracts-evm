@@ -121,10 +121,7 @@ contract ClErc20 is IClErc20, ClToken {
      * @param _borrower the account with the debt being payed off
      * @param _repayAmount The amount to repay, or -1 for the full outstanding amount
      */
-    function repayBorrowBehalf(
-        address _borrower,
-        uint _repayAmount
-    ) external override {
+    function repayBorrowBehalf(address _borrower, uint _repayAmount) external override {
         repayBorrowBehalfInternal(_borrower, _repayAmount);
     }
 
