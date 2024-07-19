@@ -1,7 +1,8 @@
 import { HardhatUserConfig } from "hardhat/config";
-import "@openzeppelin/hardhat-upgrades";
 import "@nomicfoundation/hardhat-toolbox";
+import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
+import './tasks';
 
 const config: HardhatUserConfig = {
   solidity: {
