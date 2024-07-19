@@ -37,7 +37,7 @@ abstract contract ComptrollerStorageV1 {
     /// @notice Multiplier representing the discount on collateral that a liquidator receives
     uint256 public liquidationIncentiveMantissa;
 
-    /// @notice Per-account mapping of "assets you are in", capped by maxAssets
+    /// @notice Per-account mapping of "assets you are in"
     mapping(address => address[]) public accountAssets;
 
     /**
@@ -75,9 +75,6 @@ abstract contract ComptrollerStorageV1 {
 
     /// @notice A list of all markets
     address[] public allMarkets;
-
-    /// @notice Max number of assets a single account can participate in (borrow or use as collateral)
-    uint256 public maxAssets;
 }
 
 abstract contract ComptrollerStorageV2 {

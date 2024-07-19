@@ -518,9 +518,6 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         /* We emit a Transfer event */
         emit Transfer(src, dst, tokens);
 
-        // unused function
-        // IComptroller(comptroller).transferVerify(address(this), src, dst, tokens);
-
         return true;
     }
 
@@ -585,10 +582,6 @@ abstract contract ClToken is ReentrancyGuard, IClToken, ExponentialNoError {
         /* We emit a Mint event, and a Transfer event */
         emit Mint(minter, actualMintAmount, mintTokens);
         emit Transfer(address(this), minter, mintTokens);
-
-        /* We call the defense hook */
-        // unused function
-        // IComptroller(comptroller).mintVerify(address(this), minter, actualMintAmount, mintTokens);
     }
 
     /**

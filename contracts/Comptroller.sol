@@ -563,31 +563,6 @@ contract Comptroller is Initializable, IComptroller, ExponentialNoError, Comptro
     }
 
     /**
-     * @notice Validates mint and reverts on rejection. May emit logs.
-     * @param clToken Asset being minted
-     * @param minter The address minting the tokens
-     * @param actualMintAmount The amount of the underlying asset being minted
-     * @param mintTokens The number of tokens being minted
-     */
-    function mintVerify(
-        address clToken,
-        address minter,
-        uint actualMintAmount,
-        uint mintTokens
-    ) external override {
-        // Shh - currently unused
-        clToken;
-        minter;
-        actualMintAmount;
-        mintTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the account should be allowed to redeem tokens in the given market
      * @param clToken The market to verify the redeem against
      * @param redeemer The account which would redeem the tokens
@@ -715,24 +690,6 @@ contract Comptroller is Initializable, IComptroller, ExponentialNoError, Comptro
     }
 
     /**
-     * @notice Validates borrow and reverts on rejection. May emit logs.
-     * @param clToken Asset whose underlying is being borrowed
-     * @param borrower The address borrowing the underlying
-     * @param borrowAmount The amount of the underlying asset requested to borrow
-     */
-    function borrowVerify(address clToken, address borrower, uint borrowAmount) external {
-        // Shh - currently unused
-        clToken;
-        borrower;
-        borrowAmount;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the account should be allowed to repay a borrow in the given market
      * @param clToken The market to verify the repay against
      * @param payer The account which would repay the asset
@@ -758,33 +715,6 @@ contract Comptroller is Initializable, IComptroller, ExponentialNoError, Comptro
         Exp memory borrowIndex = Exp({ mantissa: IClToken(clToken).borrowIndex() });
         updateClrBorrowIndex(clToken, borrowIndex);
         distributeBorrowerClr(clToken, borrower, borrowIndex);
-    }
-
-    /**
-     * @notice Validates repayBorrow and reverts on rejection. May emit logs.
-     * @param clToken Asset being repaid
-     * @param payer The address repaying the borrow
-     * @param borrower The address of the borrower
-     * @param actualRepayAmount The amount of underlying being repaid
-     */
-    function repayBorrowVerify(
-        address clToken,
-        address payer,
-        address borrower,
-        uint actualRepayAmount,
-        uint borrowerIndex
-    ) external override {
-        // Shh - currently unused
-        clToken;
-        payer;
-        borrower;
-        actualRepayAmount;
-        borrowerIndex;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /**
@@ -833,36 +763,6 @@ contract Comptroller is Initializable, IComptroller, ExponentialNoError, Comptro
     }
 
     /**
-     * @notice Validates liquidateBorrow and reverts on rejection. May emit logs.
-     * @param clTokenBorrowed Asset which was borrowed by the borrower
-     * @param clTokenCollateral Asset which was used as collateral and will be seized
-     * @param liquidator The address repaying the borrow and seizing the collateral
-     * @param borrower The address of the borrower
-     * @param actualRepayAmount The amount of underlying being repaid
-     */
-    function liquidateBorrowVerify(
-        address clTokenBorrowed,
-        address clTokenCollateral,
-        address liquidator,
-        address borrower,
-        uint actualRepayAmount,
-        uint seizeTokens
-    ) external override {
-        // Shh - currently unused
-        clTokenBorrowed;
-        clTokenCollateral;
-        liquidator;
-        borrower;
-        actualRepayAmount;
-        seizeTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the seizing of assets should be allowed to occur
      * @param clTokenCollateral Asset which was used as collateral and will be seized
      * @param clTokenBorrowed Asset which was borrowed by the borrower
@@ -899,34 +799,6 @@ contract Comptroller is Initializable, IComptroller, ExponentialNoError, Comptro
     }
 
     /**
-     * @notice Validates seize and reverts on rejection. May emit logs.
-     * @param clTokenCollateral Asset which was used as collateral and will be seized
-     * @param clTokenBorrowed Asset which was borrowed by the borrower
-     * @param liquidator The address repaying the borrow and seizing the collateral
-     * @param borrower The address of the borrower
-     * @param seizeTokens The number of collateral tokens to seize
-     */
-    function seizeVerify(
-        address clTokenCollateral,
-        address clTokenBorrowed,
-        address liquidator,
-        address borrower,
-        uint seizeTokens
-    ) external override {
-        // Shh - currently unused
-        clTokenCollateral;
-        clTokenBorrowed;
-        liquidator;
-        borrower;
-        seizeTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the account should be allowed to transfer tokens in the given market
      * @param clToken The market to verify the transfer against
      * @param src The account which sources the tokens
@@ -952,31 +824,6 @@ contract Comptroller is Initializable, IComptroller, ExponentialNoError, Comptro
         updateClrSupplyIndex(clToken);
         distributeSupplierClr(clToken, src);
         distributeSupplierClr(clToken, dst);
-    }
-
-    /**
-     * @notice Validates transfer and reverts on rejection. May emit logs.
-     * @param clToken Asset being transferred
-     * @param src The account which sources the tokens
-     * @param dst The account which receives the tokens
-     * @param transferTokens The number of clTokens to transfer
-     */
-    function transferVerify(
-        address clToken,
-        address src,
-        address dst,
-        uint transferTokens
-    ) external override {
-        // Shh - currently unused
-        clToken;
-        src;
-        dst;
-        transferTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /*** Liquidity/Liquidation Calculations ***/
