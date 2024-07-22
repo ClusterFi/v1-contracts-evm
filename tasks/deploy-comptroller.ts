@@ -7,11 +7,11 @@ task('deploy-comptroller', 'Deploy Comptroller')
         const proxy = await upgrades.deployProxy(Comptroller, []);
         await proxy.waitForDeployment();
 
-        console.log("Proxy deployed to:", proxy.target);
+        console.log("Proxy deployed to:", await proxy.getAddress());
 
         // verify
         await run('verify:verify', {
-            address: proxy.target
+            address: await proxy.getAddress()
         });
 
         console.log('>>>>> Comptroller Contract verified.');
