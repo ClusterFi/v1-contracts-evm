@@ -35,11 +35,7 @@ contract CompositeChainlinkOracle {
     /// @param baseAddress The base oracle address
     /// @param multiplierAddress The multiplier oracle address
     /// @param secondMultiplierAddress The second multiplier oracle address
-    constructor(
-        address baseAddress,
-        address multiplierAddress,
-        address secondMultiplierAddress
-    ) {
+    constructor(address baseAddress, address multiplierAddress, address secondMultiplierAddress) {
         base = baseAddress;
         multiplier = multiplierAddress;
         secondMultiplier = secondMultiplierAddress;
@@ -74,12 +70,7 @@ contract CompositeChainlinkOracle {
         /// if there is a second multiplier apply it
         return (
             0, /// unused
-            int256(getDerivedPriceThreeOracles(
-                base,
-                multiplier,
-                secondMultiplier,
-                decimals
-            )),
+            int256(getDerivedPriceThreeOracles(base, multiplier, secondMultiplier, decimals)),
             0, /// unused
             block.timestamp, /// return current block timestamp
             0 /// unused
@@ -109,10 +100,7 @@ contract CompositeChainlinkOracle {
         if (_compareStrings(AggregatorV3Interface(baseAddress).description(), "STETH / USD")) {
             quotePrice = int256(IStETH(multiplierAddress).getPooledEthByShares(1 ether));
         } else {
-            quotePrice = getPriceAndScale(
-                multiplierAddress,
-                expectedDecimals
-            );
+            quotePrice = getPriceAndScale(multiplierAddress, expectedDecimals);
         }
         /// both quote and base price should be scaled up to 18 decimals by now if expectedDecimals is 18
         return _calculatePrice(basePrice, quotePrice, scalingFactor);
@@ -141,15 +129,9 @@ contract CompositeChainlinkOracle {
         int256 scalingFactor = int256(10 ** uint256(expectedDecimals * 2));
 
         int256 firstPrice = getPriceAndScale(usdBaseAddress, expectedDecimals);
-        int256 secondPrice = getPriceAndScale(
-            multiplierAddress,
-            expectedDecimals
-        );
+        int256 secondPrice = getPriceAndScale(multiplierAddress, expectedDecimals);
 
-        int256 thirdPrice = getPriceAndScale(
-            secondMultiplierAddress,
-            expectedDecimals
-        );
+        int256 thirdPrice = getPriceAndScale(secondMultiplierAddress, expectedDecimals);
 
         return uint256((firstPrice * secondPrice * thirdPrice) / scalingFactor);
     }
@@ -162,9 +144,7 @@ contract CompositeChainlinkOracle {
         address oracleAddress,
         uint8 expectedDecimals
     ) public view returns (int256) {
-        (int256 price, uint8 actualDecimals) = getPriceAndDecimals(
-            oracleAddress
-        );
+        (int256 price, uint8 actualDecimals) = getPriceAndDecimals(oracleAddress);
         return _scalePrice(price, actualDecimals, expectedDecimals);
     }
 
@@ -172,16 +152,10 @@ contract CompositeChainlinkOracle {
     /// @param oracleAddress The address of the chainlink oracle
     /// returns the price and then the decimals of the given asset
     /// reverts if price is 0 or if the oracle data is invalid
-    function getPriceAndDecimals(
-        address oracleAddress
-    ) public view returns (int256, uint8) {
-        (
-            uint80 roundId,
-            int256 price,
-            ,
-            ,
-            uint80 answeredInRound
-        ) = AggregatorV3Interface(oracleAddress).latestRoundData();
+    function getPriceAndDecimals(address oracleAddress) public view returns (int256, uint8) {
+        (uint80 roundId, int256 price, , , uint80 answeredInRound) = AggregatorV3Interface(
+            oracleAddress
+        ).latestRoundData();
         bool valid = price > 0 && answeredInRound == roundId;
         if (!valid) revert InvalidOracleData();
 

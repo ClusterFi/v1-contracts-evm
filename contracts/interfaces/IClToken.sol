@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 /**
  * @title IClToken
- * @notice Defines the basic interface for ClToken 
+ * @notice Defines the basic interface for ClToken
  * @author Cluster
  */
 interface IClToken {

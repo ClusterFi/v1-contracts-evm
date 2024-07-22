@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { IClErc20, IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IClToken } from "./interfaces/IClToken.sol";
-import { IComptroller} from "./interfaces/IComptroller.sol";
+import { IComptroller } from "./interfaces/IComptroller.sol";
 import { IClusterToken } from "./interfaces/IClusterToken.sol";
 import { ExponentialNoError } from "./ExponentialNoError.sol";
 import { ComptrollerStorage } from "./base/ComptrollerStorage.sol";
@@ -13,12 +13,7 @@ import { ComptrollerStorage } from "./base/ComptrollerStorage.sol";
  * @title Cluster's Comptroller Contract
  * @author Cluster
  */
-contract Comptroller is
-    Initializable,
-    IComptroller,
-    ExponentialNoError,
-    ComptrollerStorage
-{
+contract Comptroller is Initializable, IComptroller, ExponentialNoError, ComptrollerStorage {
     /// @notice Indicator that this is a Comptroller contract (for inspection)
     bool public constant isComptroller = true;
 
@@ -44,7 +39,7 @@ contract Comptroller is
     }
 
     /*** Admin Functions ***/
-    
+
     /**
      * @notice Admin function to begin change of admin.
      * @dev Begins transfer of admin rights. The newPendingAdmin must call `acceptAdmin` to
@@ -152,10 +147,7 @@ contract Comptroller is
      * @param clToken The market to set the factor on
      * @param newCollateralFactorMantissa The new collateral factor, scaled by 1e18
      */
-    function setCollateralFactor(
-        address clToken,
-        uint newCollateralFactorMantissa
-    ) external {
+    function setCollateralFactor(address clToken, uint newCollateralFactorMantissa) external {
         // Check caller is admin
         _onlyAdmin();
 
@@ -174,8 +166,9 @@ contract Comptroller is
         }
 
         // If collateral factor != 0, fail if price == 0
-        if (newCollateralFactorMantissa != 0
-            && IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clToken)) == 0
+        if (
+            newCollateralFactorMantissa != 0 &&
+            IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clToken)) == 0
         ) {
             revert SetCollFactorWithoutPrice();
         }
@@ -185,11 +178,7 @@ contract Comptroller is
         market.collateralFactorMantissa = newCollateralFactorMantissa;
 
         // Emit event with asset, old collateral factor, and new collateral factor
-        emit NewCollateralFactor(
-            clToken,
-            oldCollateralFactorMantissa,
-            newCollateralFactorMantissa
-        );
+        emit NewCollateralFactor(clToken, oldCollateralFactorMantissa, newCollateralFactorMantissa);
     }
 
     /**
@@ -197,9 +186,7 @@ contract Comptroller is
      * @dev Admin function to set liquidationIncentive
      * @param newLiquidationIncentiveMantissa New liquidationIncentive scaled by 1e18
      */
-    function setLiquidationIncentive(
-        uint newLiquidationIncentiveMantissa
-    ) external {
+    function setLiquidationIncentive(uint newLiquidationIncentiveMantissa) external {
         _onlyAdmin();
 
         // Save current value for use in log
@@ -239,7 +226,7 @@ contract Comptroller is
             revert ArrayLengthMismatch();
         }
 
-        for (uint i = 0; i < numMarkets;) {
+        for (uint i = 0; i < numMarkets; ) {
             borrowCaps[clTokens[i]] = newBorrowCaps[i];
             emit NewBorrowCap(clTokens[i], newBorrowCaps[i]);
 
@@ -406,7 +393,7 @@ contract Comptroller is
             revert ArrayLengthMismatch();
         }
 
-        for (uint i = 0; i < numTokens;) {
+        for (uint i = 0; i < numTokens; ) {
             setClrSpeedInternal(clTokens[i], supplySpeeds[i], borrowSpeeds[i]);
             unchecked {
                 i++;
@@ -465,7 +452,7 @@ contract Comptroller is
     function enterMarkets(address[] memory clTokens) public {
         uint len = clTokens.length;
 
-        for (uint i = 0; i < len;) {
+        for (uint i = 0; i < len; ) {
             addToMarketInternal(clTokens[i], msg.sender);
             unchecked {
                 i++;
@@ -557,11 +544,7 @@ contract Comptroller is
      * @param minter The account which would get the minted tokens
      * @param mintAmount The amount of underlying being supplied to the market in exchange for tokens
      */
-    function mintAllowed(
-        address clToken,
-        address minter,
-        uint mintAmount
-    ) external {
+    function mintAllowed(address clToken, address minter, uint mintAmount) external {
         // Pausing is a very serious situation - we revert to sound the alarms
         if (mintGuardianPaused[clToken]) {
             revert MintIsPaused();
@@ -580,41 +563,12 @@ contract Comptroller is
     }
 
     /**
-     * @notice Validates mint and reverts on rejection. May emit logs.
-     * @param clToken Asset being minted
-     * @param minter The address minting the tokens
-     * @param actualMintAmount The amount of the underlying asset being minted
-     * @param mintTokens The number of tokens being minted
-     */
-    function mintVerify(
-        address clToken,
-        address minter,
-        uint actualMintAmount,
-        uint mintTokens
-    ) external override {
-        // Shh - currently unused
-        clToken;
-        minter;
-        actualMintAmount;
-        mintTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the account should be allowed to redeem tokens in the given market
      * @param clToken The market to verify the redeem against
      * @param redeemer The account which would redeem the tokens
      * @param redeemTokens The number of clTokens to exchange for the underlying asset in the market
      */
-    function redeemAllowed(
-        address clToken,
-        address redeemer,
-        uint redeemTokens
-    ) external {
+    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) external {
         redeemAllowedInternal(clToken, redeemer, redeemTokens);
 
         // Keep the flywheel moving
@@ -676,11 +630,7 @@ contract Comptroller is
      * @param borrower The account which would borrow the asset
      * @param borrowAmount The amount of underlying the account would borrow
      */
-    function borrowAllowed(
-        address clToken,
-        address borrower,
-        uint borrowAmount
-    ) external {
+    function borrowAllowed(address clToken, address borrower, uint borrowAmount) external {
         // Pausing is a very serious situation - we revert to sound the alarms
         if (borrowGuardianPaused[clToken]) {
             revert BorrowIsPaused();
@@ -716,7 +666,7 @@ contract Comptroller is
             }
         }
 
-        ( , uint shortfall) = getHypotheticalAccountLiquidityInternal(
+        (, uint shortfall) = getHypotheticalAccountLiquidityInternal(
             borrower,
             clToken,
             0,
@@ -733,29 +683,9 @@ contract Comptroller is
         distributeBorrowerClr(clToken, borrower, borrowIndex);
     }
 
-    function borrowBehalfAllowed(
-        address sender
-    ) external view {
+    function borrowBehalfAllowed(address sender) external view {
         if (sender != leverageAddress) {
             revert SenderMustBeLeverage();
-        }
-    }
-
-    /**
-     * @notice Validates borrow and reverts on rejection. May emit logs.
-     * @param clToken Asset whose underlying is being borrowed
-     * @param borrower The address borrowing the underlying
-     * @param borrowAmount The amount of the underlying asset requested to borrow
-     */
-    function borrowVerify(address clToken, address borrower, uint borrowAmount) external {
-        // Shh - currently unused
-        clToken;
-        borrower;
-        borrowAmount;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
         }
     }
 
@@ -788,33 +718,6 @@ contract Comptroller is
     }
 
     /**
-     * @notice Validates repayBorrow and reverts on rejection. May emit logs.
-     * @param clToken Asset being repaid
-     * @param payer The address repaying the borrow
-     * @param borrower The address of the borrower
-     * @param actualRepayAmount The amount of underlying being repaid
-     */
-    function repayBorrowVerify(
-        address clToken,
-        address payer,
-        address borrower,
-        uint actualRepayAmount,
-        uint borrowerIndex
-    ) external override {
-        // Shh - currently unused
-        clToken;
-        payer;
-        borrower;
-        actualRepayAmount;
-        borrowerIndex;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the liquidation should be allowed to occur
      * @param clTokenBorrowed Asset which was borrowed by the borrower
      * @param clTokenCollateral Asset which was used as collateral and will be seized
@@ -842,7 +745,7 @@ contract Comptroller is
             if (borrowBalance < repayAmount) revert RepayShouldBeLessThanTotalBorrow();
         } else {
             /* The borrower must have shortfall in order to be liquidatable */
-            ( , uint shortfall) = getAccountLiquidityInternal(borrower);
+            (, uint shortfall) = getAccountLiquidityInternal(borrower);
 
             if (shortfall == 0) {
                 revert InsufficientShortfall();
@@ -856,36 +759,6 @@ contract Comptroller is
             if (repayAmount > maxClose) {
                 revert TooMuchRepay();
             }
-        }
-    }
-
-    /**
-     * @notice Validates liquidateBorrow and reverts on rejection. May emit logs.
-     * @param clTokenBorrowed Asset which was borrowed by the borrower
-     * @param clTokenCollateral Asset which was used as collateral and will be seized
-     * @param liquidator The address repaying the borrow and seizing the collateral
-     * @param borrower The address of the borrower
-     * @param actualRepayAmount The amount of underlying being repaid
-     */
-    function liquidateBorrowVerify(
-        address clTokenBorrowed,
-        address clTokenCollateral,
-        address liquidator,
-        address borrower,
-        uint actualRepayAmount,
-        uint seizeTokens
-    ) external override {
-        // Shh - currently unused
-        clTokenBorrowed;
-        clTokenCollateral;
-        liquidator;
-        borrower;
-        actualRepayAmount;
-        seizeTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
         }
     }
 
@@ -926,34 +799,6 @@ contract Comptroller is
     }
 
     /**
-     * @notice Validates seize and reverts on rejection. May emit logs.
-     * @param clTokenCollateral Asset which was used as collateral and will be seized
-     * @param clTokenBorrowed Asset which was borrowed by the borrower
-     * @param liquidator The address repaying the borrow and seizing the collateral
-     * @param borrower The address of the borrower
-     * @param seizeTokens The number of collateral tokens to seize
-     */
-    function seizeVerify(
-        address clTokenCollateral,
-        address clTokenBorrowed,
-        address liquidator,
-        address borrower,
-        uint seizeTokens
-    ) external override {
-        // Shh - currently unused
-        clTokenCollateral;
-        clTokenBorrowed;
-        liquidator;
-        borrower;
-        seizeTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
-    }
-
-    /**
      * @notice Checks if the account should be allowed to transfer tokens in the given market
      * @param clToken The market to verify the transfer against
      * @param src The account which sources the tokens
@@ -979,31 +824,6 @@ contract Comptroller is
         updateClrSupplyIndex(clToken);
         distributeSupplierClr(clToken, src);
         distributeSupplierClr(clToken, dst);
-    }
-
-    /**
-     * @notice Validates transfer and reverts on rejection. May emit logs.
-     * @param clToken Asset being transferred
-     * @param src The account which sources the tokens
-     * @param dst The account which receives the tokens
-     * @param transferTokens The number of clTokens to transfer
-     */
-    function transferVerify(
-        address clToken,
-        address src,
-        address dst,
-        uint transferTokens
-    ) external override {
-        // Shh - currently unused
-        clToken;
-        src;
-        dst;
-        transferTokens;
-
-        // Shh - we don't ever want this hook to be marked pure
-        if (false) {
-            maxAssets = maxAssets;
-        }
     }
 
     /*** Liquidity/Liquidation Calculations ***/
@@ -1048,9 +868,7 @@ contract Comptroller is
                 account liquidity in excess of collateral requirements,
      *          account shortfall below collateral requirements)
      */
-    function getAccountLiquidityInternal(
-        address account
-    ) internal view returns (uint, uint) {
+    function getAccountLiquidityInternal(address account) internal view returns (uint, uint) {
         return getHypotheticalAccountLiquidityInternal(account, address(0), 0, 0);
     }
 
@@ -1112,7 +930,9 @@ contract Comptroller is
             vars.exchangeRate = Exp({ mantissa: vars.exchangeRateMantissa });
 
             // Get the normalized price of the asset
-            vars.oraclePriceMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(address(asset)));
+            vars.oraclePriceMantissa = IPriceOracle(oracle).getUnderlyingPrice(
+                IClErc20(address(asset))
+            );
             if (vars.oraclePriceMantissa == 0) {
                 revert ZeroPrice();
             }
@@ -1181,8 +1001,12 @@ contract Comptroller is
         uint actualRepayAmount
     ) external view override returns (uint) {
         /* Read oracle prices for borrowed and collateral markets */
-        uint priceBorrowedMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clTokenBorrowed));
-        uint priceCollateralMantissa = IPriceOracle(oracle).getUnderlyingPrice(IClErc20(clTokenCollateral));
+        uint priceBorrowedMantissa = IPriceOracle(oracle).getUnderlyingPrice(
+            IClErc20(clTokenBorrowed)
+        );
+        uint priceCollateralMantissa = IPriceOracle(oracle).getUnderlyingPrice(
+            IClErc20(clTokenCollateral)
+        );
         if (priceBorrowedMantissa == 0 || priceCollateralMantissa == 0) {
             return 0;
         }

@@ -132,24 +132,9 @@ interface IComptroller {
 
     /*** Policy Hooks ***/
 
-    function mintAllowed(
-        address clToken,
-        address minter,
-        uint mintAmount
-    ) external;
+    function mintAllowed(address clToken, address minter, uint mintAmount) external;
 
-    function mintVerify(
-        address clToken,
-        address minter,
-        uint mintAmount,
-        uint mintTokens
-    ) external;
-
-    function redeemAllowed(
-        address clToken,
-        address redeemer,
-        uint redeemTokens
-    ) external;
+    function redeemAllowed(address clToken, address redeemer, uint redeemTokens) external;
 
     function redeemVerify(
         address clToken,
@@ -158,35 +143,15 @@ interface IComptroller {
         uint redeemTokens
     ) external;
 
-    function borrowAllowed(
-        address clToken,
-        address borrower,
-        uint borrowAmount
-    ) external;
+    function borrowAllowed(address clToken, address borrower, uint borrowAmount) external;
 
-    function borrowBehalfAllowed(
-        address borrower
-    ) external;
-
-    function borrowVerify(
-        address clToken,
-        address borrower,
-        uint borrowAmount
-    ) external;
+    function borrowBehalfAllowed(address borrower) external;
 
     function repayBorrowAllowed(
         address clToken,
         address payer,
         address borrower,
         uint repayAmount
-    ) external;
-
-    function repayBorrowVerify(
-        address clToken,
-        address payer,
-        address borrower,
-        uint repayAmount,
-        uint borrowerIndex
     ) external;
 
     function liquidateBorrowAllowed(
@@ -197,15 +162,6 @@ interface IComptroller {
         uint repayAmount
     ) external;
 
-    function liquidateBorrowVerify(
-        address clTokenBorrowed,
-        address clTokenCollateral,
-        address liquidator,
-        address borrower,
-        uint repayAmount,
-        uint seizeTokens
-    ) external;
-
     function seizeAllowed(
         address clTokenCollateral,
         address clTokenBorrowed,
@@ -214,22 +170,7 @@ interface IComptroller {
         uint seizeTokens
     ) external;
 
-    function seizeVerify(
-        address clTokenCollateral,
-        address clTokenBorrowed,
-        address liquidator,
-        address borrower,
-        uint seizeTokens
-    ) external;
-
     function transferAllowed(
-        address clToken,
-        address src,
-        address dst,
-        uint transferTokens
-    ) external;
-
-    function transferVerify(
         address clToken,
         address src,
         address dst,
