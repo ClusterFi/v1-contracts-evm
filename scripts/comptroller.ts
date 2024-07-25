@@ -1,13 +1,13 @@
 import { ethers, upgrades } from "hardhat";
 
 async function main() {
-  const ClusterToken = await ethers.getContractFactory("Cluster");
-  const clusterToken = await upgrades.deployProxy(ClusterToken);
+  const Comptroller = await ethers.getContractFactory("Comptroller");
+  const comptroller = await upgrades.deployProxy(Comptroller);
 
-  await clusterToken.waitForDeployment();
+  await comptroller.waitForDeployment();
 
   console.log(
-    `CLR deployed to ${clusterToken.target}`
+    `Comptroller deployed to ${comptroller.target}`
   );
 }
 
