@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import { IFlashLoanRecipient } from "./balancer/IFlashLoanRecipient.sol";
 
-interface ILeverage is IFlashLoanRecipient {
+interface ILeverager is IFlashLoanRecipient {
     struct UserData {
         address user;
         address borrowedToken;

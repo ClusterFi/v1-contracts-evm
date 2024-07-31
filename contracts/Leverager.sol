@@ -9,7 +9,7 @@ import { IVault } from "./interfaces/balancer/IVault.sol";
 import { IComptroller } from "./interfaces/IComptroller.sol";
 import { IClErc20 } from "./interfaces/IClErc20.sol";
 import { IClToken } from "./interfaces/IClToken.sol";
-import { ILeverage } from "./interfaces/ILeverage.sol";
+import { ILeverager } from "./interfaces/ILeverager.sol";
 
 /**
  * @title Leverager
@@ -19,7 +19,7 @@ import { ILeverage } from "./interfaces/ILeverage.sol";
  * It uses SafeERC20 for safe token transfers.
  * @author Cluster
  */
-contract Leverage is ILeverage, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract Leverager is ILeverager, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     // BALANCER VAULT
